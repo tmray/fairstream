@@ -1,0 +1,47 @@
+Subject: Small feed additions + CORS headers to help apps consume Faircamp RSS
+
+Hi Faircamp team,
+
+I'm building a small music streaming app that can subscribe to Faircamp sites. I love Faircamp's RSS output, but for client apps running in browsers (and many podcast/music apps) it's helpful if the feed includes direct links to audio files and the server sends CORS headers. I put together a short example feed (`example_feed.rss`) showing the minimal changes that make feeds immediately consumable by apps.
+
+What the app needs (minimal, backward compatible):
+
+1) Include an <enclosure> element in each <item> pointing to the audio file. Example:
+
+   <enclosure url="https://your-site/path/to/track.mp3" type="audio/mpeg" length="1234567" />
+
+   This is the standard RSS way to attach media and is widely supported by players. `type` is the MIME type and `length` is the file size in bytes.
+
+2) (Optional but recommended) Include media:content for richer metadata and thumbnails:
+
+   <media:content url="https://.../track.mp3" fileSize="1234567" type="audio/mpeg" duration="202">
+       <media:title>Track Name</media:title>
+       <media:thumbnail url="https://.../cover.jpg" />
+   </media:content>
+
+3) Add CORS headers for the feed and the media files so browser-based clients can fetch them. At minimum:
+
+   Access-Control-Allow-Origin: *
+   Access-Control-Allow-Methods: GET, OPTIONS
+   Access-Control-Allow-Headers: Origin, Content-Type, Accept
+
+   If Faircamp is served from S3/CloudFront, these can be set on the origin or via CloudFront behaviors. For nginx, an example config is:
+
+   location / {
+     add_header 'Access-Control-Allow-Origin' '*';
+     add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';
+     add_header 'Access-Control-Allow-Headers' 'Origin, Content-Type, Accept';
+     ...
+   }
+
+Why this helps
+- Apps can load and play tracks directly from the feed without scraping HTML pages.
+- Podcast players and media libraries will show track durations and artwork.
+- Browser-based apps won't be blocked by CORS errors.
+
+I've attached a tiny example RSS (`example_feed.rss`) showing two items with `enclosure`, `media:content`, and `itunes:` tags. If you'd like, I can open a small PR or provide a patch/hook suggestion for Faircamp so these fields are generated automatically from uploaded audio assets.
+
+Thanks for making Faircamp — happy to help test or iterate on a patch.
+
+Best,
+[Your Name]

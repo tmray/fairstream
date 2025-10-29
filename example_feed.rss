@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+    <channel>
+        <atom:link href="https://faircamp.lorenzosmusic.com/feed.rss" rel="self" type="application/rss+xml"/>
+        <title>Lorenzo's Music</title>
+        <description>An open-source Linux-based creative commons experimental rock band. Using Ubuntu Studio, Ardour, and Github to make music.</description>
+        <generator>Faircamp 1.4.2 (0ae1b54)</generator>
+        <image>
+            <height>640</height>
+            <link>https://faircamp.lorenzosmusic.com/</link>
+            <title>an illustration of the band</title>
+            <url>https://faircamp.lorenzosmusic.com/feed.jpg?izpgRDv7QsI</url>
+            <width>640</width>
+        </image>
+        <language>en</language>
+        <lastBuildDate>Tue, 22 Jul 2025 05:10:38 +0000</lastBuildDate>
+        <link>https://faircamp.lorenzosmusic.com/</link>
+
+        <!-- Example item with recommended audio file information -->
+        <item>
+            <title>Lorenzo's Music – If I Was Alone</title>
+            <description>Single from the If I Was Alone EP</description>
+            <guid>https://faircamp.lorenzosmusic.com/if-i-was-alone-ep/if-i-was-alone</guid>
+            <link>https://faircamp.lorenzosmusic.com/if-i-was-alone-ep/</link>
+            <!-- Add enclosure tag for direct audio file access -->
+            <enclosure 
+                url="https://faircamp.lorenzosmusic.com/if-i-was-alone-ep/if-i-was-alone.mp3"
+                type="audio/mpeg"
+                length="4862867"/>
+            <!-- Add media:content for enhanced metadata -->
+            <media:content 
+                url="https://faircamp.lorenzosmusic.com/if-i-was-alone-ep/if-i-was-alone.mp3"
+                fileSize="4862867"
+                type="audio/mpeg"
+                duration="202">
+                <media:title>If I Was Alone</media:title>
+                <media:thumbnail url="https://faircamp.lorenzosmusic.com/if-i-was-alone-ep/cover.jpg"/>
+            </media:content>
+            <!-- Optional iTunes-style tags for compatibility -->
+            <itunes:duration>3:22</itunes:duration>
+            <itunes:image href="https://faircamp.lorenzosmusic.com/if-i-was-alone-ep/cover.jpg"/>
+        </item>
+
+        <!-- Another example with a different track -->
+        <item>
+            <title>Lorenzo's Music – Blue Water Friction</title>
+            <description>Track from the Friction album</description>
+            <guid>https://faircamp.lorenzosmusic.com/friction/blue-water-friction</guid>
+            <link>https://faircamp.lorenzosmusic.com/friction/</link>
+            <enclosure 
+                url="https://faircamp.lorenzosmusic.com/friction/blue-water-friction.mp3"
+                type="audio/mpeg"
+                length="5234561"/>
+            <media:content 
+                url="https://faircamp.lorenzosmusic.com/friction/blue-water-friction.mp3"
+                fileSize="5234561"
+                type="audio/mpeg"
+                duration="218">
+                <media:title>Blue Water Friction</media:title>
+                <media:thumbnail url="https://faircamp.lorenzosmusic.com/friction/cover.jpg"/>
+            </media:content>
+            <itunes:duration>3:38</itunes:duration>
+            <itunes:image href="https://faircamp.lorenzosmusic.com/friction/cover.jpg"/>
+        </item>
+    </channel>
+</rss>
