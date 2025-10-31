@@ -24,7 +24,7 @@ class _NowPlayingBarState extends State<NowPlayingBar> {
             color: theme.colorScheme.surface,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1), // Not deprecated, keep as is
+                  color: Colors.black.withValues(alpha: 0.1),
                 blurRadius: 8,
                 offset: const Offset(0, -2),
               ),
