@@ -97,6 +97,7 @@ class _FeedsScreenState extends State<FeedsScreen> {
       if (!mounted) return;
       setState(() {});
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error parsing feed: $e')));
     }
   }
