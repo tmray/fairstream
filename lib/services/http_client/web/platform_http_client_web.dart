@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 import '../platform_http_client.dart';
 
 /// Web-specific implementation of PlatformHttpClient that bypasses CORS
@@ -7,10 +7,10 @@ class WebHttpClient implements PlatformHttpClient {
   @override
   Future<String> fetchString(String url) async {
     try {
-      final request = html.HttpRequest();
+      final request = web.XMLHttpRequest();
       final completer = Completer<String>();
       
-      request.open('GET', url, async: true);
+      request.open('GET', url);
       request.withCredentials = false;  // Don't send credentials for CORS requests
       
       request.onLoad.listen((_) {
@@ -23,7 +23,7 @@ class WebHttpClient implements PlatformHttpClient {
         }
       });
       
-      request.onError.listen((e) {
+      request.onError.listen((_) {
         completer.completeError(
           Exception('Failed to fetch $url: Network error')
         );
