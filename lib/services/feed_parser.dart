@@ -71,7 +71,9 @@ class FeedParser {
     final rawItemTitle = item.findElements('title').firstOrNull?.innerText ?? 'Unknown Track';
     final cleanedItemTitle = cleanTrackTitle(rawItemTitle);
     // Strip the artist prefix safely using the shared helper.
-    final trackTitle = stripArtistPrefix(cleanedItemTitle, artist);
+    var trackTitle = stripArtistPrefix(cleanedItemTitle, artist);
+    // Remove numbered prefix pattern (e.g. "1. ", "(1) ")
+    trackTitle = trackTitle.replaceFirst(RegExp(r'^(\d+\.\s*|\(\d+\)\s*)'), '');
         
         final guid = item.findElements('guid').firstOrNull?.innerText ?? i.toString();
         final link = item.findElements('link').firstOrNull?.innerText ?? '';

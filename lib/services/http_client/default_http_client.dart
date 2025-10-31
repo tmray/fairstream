@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'platform_http_client.dart';
 
@@ -9,7 +10,11 @@ class DefaultHttpClient implements PlatformHttpClient {
   Future<String> fetchString(String url) async {
     final response = await _client.get(Uri.parse(url));
     if (response.statusCode == 200) {
-      return response.body;
+      try {
+        return utf8.decode(response.bodyBytes, allowMalformed: true);
+      } catch (_) {
+        return latin1.decode(response.bodyBytes);
+      }
     }
     throw Exception('Failed to fetch $url: ${response.statusCode}');
   }

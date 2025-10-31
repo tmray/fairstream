@@ -2,12 +2,65 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/album.dart';
+import '../models/track.dart';
 import 'feed_metadata.dart';
+import 'text_normalizer.dart';
 
 class AlbumStore {
   final _metadataService = FeedMetadataService();
 
   static const _key = 'albums_all';
+  static const _migrationKey = 'albums_normalized_v2';
+
+  /// Normalize stored track titles once per-install when we add normalization
+  /// logic later. This will scan saved albums, normalize each track title and
+  /// persist the updated map. Idempotent via [_migrationKey].
+  Future<void> _ensureStoredTitlesNormalized() async {
+    final prefs = await SharedPreferences.getInstance();
+    final migrated = prefs.getBool(_migrationKey) ?? false;
+    if (migrated) return;
+
+    final m = await _loadMap();
+    var changed = false;
+    for (final feedId in m.keys) {
+      final list = m[feedId] ?? [];
+      for (var i = 0; i < list.length; i++) {
+        final album = list[i];
+        final normalizedTracks = <Track>[];
+        var albumChanged = false;
+        for (final t in album.tracks) {
+          final cleaned = cleanTrackTitle(t.title);
+          // Remove everything up to and including "number. " pattern
+          final finalTitle = cleaned.replaceFirst(RegExp(r'^.+?\d+\.\s*'), '');
+          if (finalTitle != t.title) albumChanged = true;
+          normalizedTracks.add(Track(
+            id: t.id,
+            title: finalTitle,
+            url: t.url,
+            durationSeconds: t.durationSeconds,
+          ));
+        }
+        if (albumChanged) {
+          changed = true;
+          list[i] = Album(
+            id: album.id,
+            title: album.title,
+            artist: album.artist,
+            coverUrl: album.coverUrl,
+            tracks: normalizedTracks,
+            description: album.description,
+            published: album.published,
+          );
+        }
+      }
+      m[feedId] = list;
+    }
+
+    if (changed) {
+      await _saveMap(m);
+    }
+    await prefs.setBool(_migrationKey, true);
+  }
 
   /// Force clear all cached albums (removes all stored album data)
   Future<void> clearAllAlbumsCache() async {
@@ -76,6 +129,8 @@ class AlbumStore {
   }
 
   Future<List<Album>> getAllAlbums() async {
+    // Ensure migrated titles are normalized once before returning albums.
+    await _ensureStoredTitlesNormalized();
     final m = await _loadMap();
     return m.values.expand((e) => e).toList();
   }

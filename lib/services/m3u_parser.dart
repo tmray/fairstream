@@ -6,26 +6,20 @@ import 'text_normalizer.dart';
 import 'package:flutter/foundation.dart';
 
 class M3UParser {
-  final PlatformHttpClient _client = createPlatformHttpClient();
+  final PlatformHttpClient _client;
+
+  /// Allow injecting a [PlatformHttpClient] for testing; default uses the
+  /// platform implementation.
+  M3UParser({PlatformHttpClient? client}) : _client = client ?? createPlatformHttpClient();
 
   /// Normalizes special characters and cleans up artist prefix
   String _cleanTitle(String title, String artistName) {
     // Use shared normalizer to handle unicode dashes and mojibake
     var cleaned = cleanTrackTitle(title);
     
-    // Additional normalization for em-dashes and mojibake specific to M3U files
-    cleaned = cleaned
-      .replaceAll('\u2013', '-') // en-dash
-      .replaceAll('\u2014', '-') // em-dash
-      .replaceAll('â€"', '-')    // common mojibake for dash
-      .replaceAll('â', '-')      // partial mojibake
-      .replaceAll('Â', '-');     // another partial mojibake
-
-    // Strip the artist prefix if present
-    cleaned = stripArtistPrefix(cleaned, artistName);
-
-    // Remove any numbered prefix pattern that might still exist (e.g. "1. ")
-    cleaned = cleaned.replaceFirst(RegExp(r'^(\d+\.\s*|\(\d+\)\s*)'), '');
+    // Remove everything up to and including "number. " pattern
+    // E.g. "Lorenzo's Music – 1. With you" -> "With you"
+    cleaned = cleaned.replaceFirst(RegExp(r'^.+?\d+\.\s*'), '');
 
     return cleaned;
   }

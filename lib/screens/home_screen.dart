@@ -21,7 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('FairStreamApp'),
       ),
-      body: Expanded(child: _buildBody()),
+      body: _buildBody(),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) => setState(() => _selectedIndex = index),

@@ -57,7 +57,7 @@ class AlbumDetail extends StatelessWidget {
               if (album.description != null) ...[
                 const SizedBox(height: 8),
                 // Use a Container to avoid layout issues with Html widget
-                Container(
+                SizedBox(
                   width: double.infinity,
                   child: Html(
                     data: album.description!,
@@ -100,7 +100,7 @@ class AlbumDetail extends StatelessWidget {
                 ),
               ),
               title: Text(
-                t.title.replaceAll('\u2013', '-'), // Normalize en-dash to hyphen
+                t.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
