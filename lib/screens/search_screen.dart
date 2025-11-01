@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/album_store.dart';
+import '../services/search_history.dart';
 import '../models/album.dart';
 import 'artist_detail.dart';
 import 'album_detail.dart';
@@ -15,6 +16,7 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final _store = AlbumStore();
+  final _history = SearchHistory();
   final _controller = TextEditingController();
   Timer? _debounce;
   static const _debounceDuration = Duration(milliseconds: 300);
@@ -23,6 +25,7 @@ class _SearchScreenState extends State<SearchScreen> {
   String _query = '';
   Map<String, ArtistIndexEntry> _artistIndex = const {};
   List<Album> _albums = const [];
+  List<String> _recent = const [];
 
   @override
   void initState() {
@@ -35,10 +38,12 @@ class _SearchScreenState extends State<SearchScreen> {
     // Load cached artist index and all albums (for album matches and hydration)
     final idx = await _store.getArtistIndexCached();
     final albums = await _store.getAllAlbums();
+    final recents = await _history.getRecent();
     if (!mounted) return;
     setState(() {
       _artistIndex = idx;
       _albums = albums;
+      _recent = recents;
       _loading = false;
     });
   }
@@ -56,7 +61,20 @@ class _SearchScreenState extends State<SearchScreen> {
     final results = _buildResults();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Search')),
+      appBar: AppBar(
+        title: const Text('Search'),
+        actions: [
+          IconButton(
+            tooltip: 'Clear recent searches',
+            icon: const Icon(Icons.delete_sweep),
+            onPressed: () async {
+              await _history.clear();
+              if (!mounted) return;
+              setState(() => _recent = const []);
+            },
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
@@ -80,6 +98,14 @@ class _SearchScreenState extends State<SearchScreen> {
                         },
                       ),
               ),
+              onSubmitted: (v) async {
+                final q = v.trim();
+                setState(() => _query = q);
+                await _history.add(q);
+                final rec = await _history.getRecent();
+                if (!mounted) return;
+                setState(() => _recent = rec);
+              },
               onChanged: (v) {
                 _debounce?.cancel();
                 _debounce = Timer(_debounceDuration, () {
@@ -93,7 +119,38 @@ class _SearchScreenState extends State<SearchScreen> {
             const LinearProgressIndicator(minHeight: 2),
           Expanded(
             child: _query.isEmpty
-                ? const Center(child: Text('Type to search'))
+                ? (_recent.isEmpty
+                    ? const Center(child: Text('Type to search'))
+                    : ListView.builder(
+                        itemCount: _recent.length + 1,
+                        itemBuilder: (context, index) {
+                          if (index == 0) {
+                            return ListTile(
+                              dense: true,
+                              title: Text('Recent searches', style: theme.textTheme.labelLarge),
+                            );
+                          }
+                          final q = _recent[index - 1];
+                          return ListTile(
+                            leading: const Icon(Icons.history),
+                            title: Text(q, maxLines: 1, overflow: TextOverflow.ellipsis),
+                            trailing: IconButton(
+                              tooltip: 'Remove',
+                              icon: const Icon(Icons.close, size: 18),
+                              onPressed: () async {
+                                await _history.remove(q);
+                                final rec = await _history.getRecent();
+                                if (!mounted) return;
+                                setState(() => _recent = rec);
+                              },
+                            ),
+                            onTap: () {
+                              _controller.text = q;
+                              setState(() => _query = q);
+                            },
+                          );
+                        },
+                      ))
                 : results.isEmpty
                     ? const Center(child: Text('No matches'))
                     : ListView.separated(
