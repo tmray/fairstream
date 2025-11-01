@@ -3,6 +3,7 @@ import 'package:flutter_html/flutter_html.dart';
 import '../models/album.dart';
 import '../services/playback_manager.dart';
 import '../widgets/playing_indicator.dart';
+import 'artist_detail.dart';
 
 class AlbumDetail extends StatelessWidget {
   final Album album;
@@ -49,10 +50,30 @@ class AlbumDetail extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                album.artist,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: theme.colorScheme.secondary,
+              TextButton(
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(0, 0),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  alignment: Alignment.centerLeft,
+                ),
+                onPressed: () {
+                  final key = album.artist.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ArtistDetail(
+                        artistKey: key,
+                        displayName: album.artist,
+                      ),
+                    ),
+                  );
+                },
+                child: Text(
+                  album.artist,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: theme.colorScheme.secondary,
+                  ),
                 ),
               ),
               if (album.description != null) ...[

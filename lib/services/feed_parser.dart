@@ -56,13 +56,13 @@ class FeedParser {
   final fullTitle = cleanTrackTitle(fullTitleRaw);
   // After cleaning, dashes are normalized to ASCII '-' without surrounding spaces.
   final titleParts = fullTitle.split('-');
-  final artist = titleParts.isNotEmpty ? titleParts[0].trim() : 'Unknown';
+  String artist = titleParts.length > 1 ? titleParts[0].trim() : '';
   final albumTitle = titleParts.length > 1 ? titleParts.sublist(1).join('-').trim() : fullTitle;
       final imageElement = channel.findElements('image').firstOrNull;
       final coverUrl = imageElement?.findElements('url').firstOrNull?.innerText;
       final items = channel.findElements('item').toList();
       
-      // Use shared normalizer helper
+  // Use shared normalizer helper
 
       final tracks = <Track>[];
       for (var i = 0; i < items.length; i++) {
@@ -71,6 +71,15 @@ class FeedParser {
     final rawItemTitle = item.findElements('title').firstOrNull?.innerText ?? 'Unknown Track';
     final cleanedItemTitle = cleanTrackTitle(rawItemTitle);
     // Strip the artist prefix safely using the shared helper.
+    // If artist is still unknown (channel title didn't include it), try inferring
+    // from the first item's title as "Artist - Track" which Faircamp commonly uses.
+    if (artist.isEmpty && cleanedItemTitle.contains('-')) {
+      final parts = cleanedItemTitle.split('-');
+      final inferred = parts.first.trim();
+      if (inferred.isNotEmpty) {
+        artist = inferred;
+      }
+    }
     var trackTitle = stripArtistPrefix(cleanedItemTitle, artist);
     // Remove numbered prefix pattern (e.g. "1. ", "(1) ")
     trackTitle = trackTitle.replaceFirst(RegExp(r'^(\d+\.\s*|\(\d+\)\s*)'), '');
@@ -92,10 +101,20 @@ class FeedParser {
         throw Exception('No tracks found in feed');
       }
 
+      // Final fallback: if we still couldn't infer a distinct artist name, prefer leaving
+      // albumTitle as-is and use a best-effort artist. Avoid setting artist equal to album title.
+      if (artist.trim().isEmpty || artist.trim().toLowerCase() == albumTitle.trim().toLowerCase()) {
+        // Try channel-level author fields
+  final channelAuthor = channel.findElements('author').firstOrNull?.innerText.trim() ?? '';
+        if (channelAuthor.isNotEmpty) {
+          artist = channelAuthor;
+        }
+      }
+
       return Album(
         id: fullTitle,
         title: albumTitle,
-        artist: artist,
+        artist: artist.isNotEmpty ? artist : 'Unknown',
         coverUrl: coverUrl,
         tracks: tracks
       );

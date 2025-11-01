@@ -72,6 +72,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
               );
             },
           ),
+          IconButton(
+            icon: const Icon(Icons.build),
+            tooltip: 'Fix artists',
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              messenger.showSnackBar(
+                const SnackBar(content: Text('Repairing artist metadata...')),
+              );
+              final updated = await _store.repairArtistMetadata();
+              await _load();
+              messenger.hideCurrentSnackBar();
+              messenger.showSnackBar(
+                SnackBar(content: Text(updated > 0 ? 'Fixed $updated album${updated == 1 ? '' : 's'}' : 'No fixes needed')),
+              );
+            },
+          ),
         ],
       ),
       body: _albums.isEmpty 
