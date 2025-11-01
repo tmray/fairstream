@@ -93,20 +93,26 @@ class AlbumDetail extends StatelessWidget {
           itemBuilder: (c, i) {
             final t = album.tracks[i];
             return ListTile(
-              leading: Text(
-                '${i + 1}',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-              title: Text(
-                t.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: IconButton(
+              leading: IconButton(
                 icon: const Icon(Icons.play_arrow),
                 onPressed: () => playback.playUrl(t.url, title: t.title),
+              ),
+              title: Row(
+                children: [
+                  Text(
+                    '${i + 1}. ',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      t.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             );
           },
