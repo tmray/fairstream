@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'library_screen.dart';
 import 'feeds_screen.dart';
 import 'artists_screen.dart';
+import 'search_screen.dart';
 // ...existing code...
 // ...existing code...
 
@@ -27,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) => setState(() => _selectedIndex = index),
         destinations: const [
+          NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
           NavigationDestination(icon: Icon(Icons.library_music), label: 'Library'),
           NavigationDestination(icon: Icon(Icons.group), label: 'Artists'),
           NavigationDestination(icon: Icon(Icons.rss_feed), label: 'Feeds'),
@@ -38,10 +40,12 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildBody() {
     switch (_selectedIndex) {
       case 0:
-        return const LibraryScreen();
+        return const SearchScreen();
       case 1:
-        return const ArtistsScreen();
+        return const LibraryScreen();
       case 2:
+        return const ArtistsScreen();
+      case 3:
         return const FeedsScreen();
       default:
         return const Center(child: Text('Unknown View')); 

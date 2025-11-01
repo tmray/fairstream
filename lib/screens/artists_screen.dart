@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/album_store.dart';
 import '../models/album.dart';
@@ -15,11 +16,21 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
   final Map<String, _ArtistGroup> _groups = {};
   bool _loading = true;
   String _query = '';
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _debounce;
+  static const _debounceDuration = Duration(milliseconds: 300);
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -94,20 +105,31 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                   child: TextField(
+                    controller: _searchController,
                     decoration: InputDecoration(
                       prefixIcon: const Icon(Icons.search),
                       hintText: 'Search artists',
                       isDense: true,
                       border: const OutlineInputBorder(),
-                      suffixIcon: _query.isEmpty
+                      suffixIcon: _searchController.text.isEmpty
                           ? null
                           : IconButton(
                               tooltip: 'Clear',
                               icon: const Icon(Icons.clear),
-                              onPressed: () => setState(() => _query = ''),
+                              onPressed: () {
+                                _debounce?.cancel();
+                                _searchController.clear();
+                                setState(() => _query = '');
+                              },
                             ),
                     ),
-                    onChanged: (v) => setState(() => _query = v),
+                    onChanged: (v) {
+                      _debounce?.cancel();
+                      _debounce = Timer(_debounceDuration, () {
+                        if (!mounted) return;
+                        setState(() => _query = v.trim());
+                      });
+                    },
                   ),
                 ),
                 Expanded(
