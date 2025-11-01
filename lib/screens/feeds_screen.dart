@@ -79,7 +79,17 @@ class _FeedsScreenState extends State<FeedsScreen> {
       final albums = await _parser.parseFeed(url);
       final store = AlbumStore();
       
+      int addedCount = 0;
+      int skippedCount = 0;
+      
       for (final album in albums) {
+        // Check if album already exists before creating feed
+        final exists = await store.albumExists(album.id);
+        if (exists) {
+          skippedCount++;
+          continue;
+        }
+        
         final feedId = '${DateTime.now().millisecondsSinceEpoch}_${album.title}';
         final feed = FeedSource(
           id: feedId,
@@ -91,11 +101,19 @@ class _FeedsScreenState extends State<FeedsScreen> {
         
         _feeds.add(feed);
         await store.saveAlbum(feedId, album);
+        addedCount++;
       }
       
       await _subs.save(_feeds);
       if (!mounted) return;
       setState(() {});
+      
+      // Show feedback about what was added/skipped
+      if (!mounted) return;
+      final message = addedCount > 0 
+        ? 'Added $addedCount album${addedCount > 1 ? 's' : ''}${skippedCount > 0 ? ' ($skippedCount duplicate${skippedCount > 1 ? 's' : ''} skipped)' : ''}'
+        : 'All albums already exist';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error parsing feed: $e')));

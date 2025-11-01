@@ -1,5 +1,6 @@
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/album.dart';
 import '../models/track.dart';
@@ -135,7 +136,25 @@ class AlbumStore {
     return m.values.expand((e) => e).toList();
   }
 
+  Future<bool> albumExists(String albumId) async {
+    final m = await _loadMap();
+    // Check if album exists in any feed
+    for (final list in m.values) {
+      if (list.any((a) => a.id == albumId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<void> saveAlbum(String feedId, Album album) async {
+    // Check if this album already exists in any feed
+    final exists = await albumExists(album.id);
+    if (exists) {
+      debugPrint('Album "${album.title}" already exists, skipping duplicate');
+      return;
+    }
+
     // Try to enrich album with metadata from RSS/Atom feed
     final tracks = album.tracks;
     if (tracks.isNotEmpty) {
@@ -157,7 +176,7 @@ class AlbumStore {
 
     final m = await _loadMap();
     final list = m[feedId] ?? [];
-    // replace if same id
+    // replace if same id (shouldn't happen now due to check above, but keep for safety)
     final idx = list.indexWhere((a) => a.id == album.id);
     if (idx >= 0) {
       list[idx] = album;
