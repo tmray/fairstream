@@ -37,26 +37,33 @@ class _NowPlayingBarState extends State<NowPlayingBar> {
                 valueListenable: _mgr.currentTitle,
                 builder: (context, title, __) {
                   final text = title ?? (playing ? 'Playing' : 'Stopped');
-                  return Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        text,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          color: theme.colorScheme.onSurface,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (playing && title != null)
-                        Text(
-                          'Now Playing',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                  return ValueListenableBuilder<String?>(
+                    valueListenable: _mgr.currentArtist,
+                    builder: (context, artist, __) {
+                      return Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            text,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: theme.colorScheme.onSurface,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                    ],
+                          if (playing && title != null && artist != null)
+                            Text(
+                              artist,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      );
+                    },
                   );
                 },
               ),

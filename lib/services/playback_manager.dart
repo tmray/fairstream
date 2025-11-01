@@ -40,9 +40,23 @@ class PlaybackManager {
   // the external mpv fallback.
   final ValueNotifier<bool> isPlaying = ValueNotifier<bool>(false);
   final ValueNotifier<String?> currentTitle = ValueNotifier<String?>(null);
+  final ValueNotifier<String?> currentArtist = ValueNotifier<String?>(null);
   StreamSubscription<bool>? _playingSub;
 
-  Future<void> playUrl(String url) async {
+  Future<void> playUrl(String url, {String? title}) async {
+    // Extract artist from URL filename (part before the dash)
+    final filename = Uri.decodeComponent(url.split('/').last);
+    String? artist;
+    if (filename.contains('–')) {
+      // Extract text before en-dash and after track number
+      final beforeDash = filename.split('–').first.trim();
+      // Remove leading track number (e.g., "01 " or "1 ")
+      artist = beforeDash.replaceFirst(RegExp(r'^\d+\s+'), '').trim();
+    } else if (filename.contains('-')) {
+      final beforeDash = filename.split('-').first.trim();
+      artist = beforeDash.replaceFirst(RegExp(r'^\d+\s+'), '').trim();
+    }
+    
     // If running on Linux desktop, use a lightweight external player as a
     // fallback (mpv) to avoid depending on a native just_audio plugin that
     // may not be registered. This keeps playback working during development.
@@ -68,7 +82,8 @@ class PlaybackManager {
             await _pidFile.writeAsString(_linuxPid.toString());
           }
         } catch (_) {}
-        currentTitle.value = url.split('/').last;
+        currentTitle.value = title ?? url.split('/').last;
+        currentArtist.value = artist;
         isPlaying.value = true;
         // For detached processes, exitCode may not be meaningful in the same
         // way; attempt to observe it when available but don't rely on it.
@@ -106,7 +121,8 @@ class PlaybackManager {
       final mediaItem = MediaItem(
         id: url,
         album: '',
-        title: url.split('/').last,
+        title: title ?? url.split('/').last,
+        artist: artist,
         extras: {},
       );
 
@@ -121,6 +137,7 @@ class PlaybackManager {
       final source = AudioSource.uri(Uri.parse(url), tag: mediaItem);
       await _player!.setAudioSource(source);
   currentTitle.value = mediaItem.title;
+  currentArtist.value = artist;
   _lastUrl = url;
       await _player!.play();
     } catch (e, st) {
@@ -153,10 +170,12 @@ class PlaybackManager {
       _linuxProcess = null;
       isPlaying.value = false;
       currentTitle.value = null;
+      currentArtist.value = null;
       return;
     }
     isPlaying.value = false;
     currentTitle.value = null;
+    currentArtist.value = null;
     return _player?.stop();
   }
 
@@ -216,6 +235,7 @@ class PlaybackManager {
     _playingSub?.cancel();
     isPlaying.dispose();
     currentTitle.dispose();
+    currentArtist.dispose();
   }
 
   Future<void> seek(Duration pos) => _player?.seek(pos) ?? Future.value();

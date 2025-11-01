@@ -106,7 +106,7 @@ class AlbumDetail extends StatelessWidget {
               ),
               trailing: IconButton(
                 icon: const Icon(Icons.play_arrow),
-                onPressed: () => playback.playUrl(t.url),
+                onPressed: () => playback.playUrl(t.url, title: t.title),
               ),
             );
           },
