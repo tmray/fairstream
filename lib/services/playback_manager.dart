@@ -41,9 +41,15 @@ class PlaybackManager {
   final ValueNotifier<bool> isPlaying = ValueNotifier<bool>(false);
   final ValueNotifier<String?> currentTitle = ValueNotifier<String?>(null);
   final ValueNotifier<String?> currentArtist = ValueNotifier<String?>(null);
+  // Progress tracking
+  final ValueNotifier<Duration> position = ValueNotifier<Duration>(Duration.zero);
+  final ValueNotifier<Duration?> duration = ValueNotifier<Duration?>(null);
   StreamSubscription<bool>? _playingSub;
+  StreamSubscription<Duration>? _posSub;
+  StreamSubscription<Duration?>? _durSub;
+  Timer? _posTimer; // Linux fallback approximate timer
 
-  Future<void> playUrl(String url, {String? title}) async {
+  Future<void> playUrl(String url, {String? title, int? durationSeconds}) async {
     // Extract artist from URL filename (part before the dash)
     final filename = Uri.decodeComponent(url.split('/').last);
     String? artist;
@@ -64,6 +70,11 @@ class PlaybackManager {
       try {
         // Kill any previous process
         await stop();
+        // reset progress
+        position.value = Duration.zero;
+        duration.value = durationSeconds != null && durationSeconds > 0
+            ? Duration(seconds: durationSeconds)
+            : null;
         // start mpv and mark playing.
         // Use a detached process only during development (when running under
         // flutter tooling) so the player doesn't get killed by tooling
@@ -85,6 +96,20 @@ class PlaybackManager {
         currentTitle.value = title ?? url.split('/').last;
         currentArtist.value = artist;
         isPlaying.value = true;
+        // Start a lightweight timer to approximate progress when duration is known
+        _posTimer?.cancel();
+        if (duration.value != null) {
+          _posTimer = Timer.periodic(const Duration(milliseconds: 200), (t) {
+            final d = duration.value!;
+            final nextMs = position.value.inMilliseconds + 200;
+            if (nextMs >= d.inMilliseconds) {
+              position.value = d;
+              t.cancel();
+            } else {
+              position.value = Duration(milliseconds: nextMs);
+            }
+          });
+        }
         // For detached processes, exitCode may not be meaningful in the same
         // way; attempt to observe it when available but don't rely on it.
         try {
@@ -94,6 +119,9 @@ class PlaybackManager {
             currentTitle.value = null;
             _linuxProcess = null;
             _linuxPid = null;
+            _posTimer?.cancel();
+            position.value = Duration.zero;
+            duration.value = null;
             try {
               if (await _pidFile.exists()) await _pidFile.delete();
             } catch (_) {}
@@ -130,8 +158,16 @@ class PlaybackManager {
       _player ??= AudioPlayer();
       // Cancel any previous playing subscription
       await _playingSub?.cancel();
+      await _posSub?.cancel();
+      await _durSub?.cancel();
       _playingSub = _player!.playingStream.listen((playing) {
         isPlaying.value = playing;
+      });
+      _posSub = _player!.positionStream.listen((p) {
+        position.value = p;
+      });
+      _durSub = _player!.durationStream.listen((d) {
+        duration.value = d;
       });
 
       final source = AudioSource.uri(Uri.parse(url), tag: mediaItem);
@@ -171,11 +207,16 @@ class PlaybackManager {
       isPlaying.value = false;
       currentTitle.value = null;
       currentArtist.value = null;
+      _posTimer?.cancel();
+      position.value = Duration.zero;
+      duration.value = null;
       return;
     }
     isPlaying.value = false;
     currentTitle.value = null;
     currentArtist.value = null;
+    position.value = Duration.zero;
+    duration.value = null;
     return _player?.stop();
   }
 
@@ -195,6 +236,7 @@ class PlaybackManager {
         }
       } catch (_) {}
       isPlaying.value = false;
+      _posTimer?.cancel();
       return;
     }
     isPlaying.value = false;
@@ -218,6 +260,20 @@ class PlaybackManager {
       } catch (_) {
         // ignore
       }
+      // restart timer if we have a duration
+      if (duration.value != null) {
+        _posTimer?.cancel();
+        _posTimer = Timer.periodic(const Duration(milliseconds: 200), (t) {
+          final d = duration.value!;
+          final nextMs = position.value.inMilliseconds + 200;
+          if (nextMs >= d.inMilliseconds) {
+            position.value = d;
+            t.cancel();
+          } else {
+            position.value = Duration(milliseconds: nextMs);
+          }
+        });
+      }
       return;
     }
     isPlaying.value = true;
@@ -233,9 +289,14 @@ class PlaybackManager {
   /// Dispose any subscriptions/notifiers if needed by callers.
   void dispose() {
     _playingSub?.cancel();
+    _posSub?.cancel();
+    _durSub?.cancel();
+    _posTimer?.cancel();
     isPlaying.dispose();
     currentTitle.dispose();
     currentArtist.dispose();
+    position.dispose();
+    duration.dispose();
   }
 
   Future<void> seek(Duration pos) => _player?.seek(pos) ?? Future.value();

@@ -105,7 +105,11 @@ class AlbumDetail extends StatelessWidget {
                         icon: (isPlaying && playing)
                             ? const PlayingIndicator()
                             : const Icon(Icons.play_arrow),
-                        onPressed: () => playback.playUrl(t.url, title: t.title),
+                        onPressed: () => playback.playUrl(
+                          t.url,
+                          title: t.title,
+                          durationSeconds: t.durationSeconds,
+                        ),
                       ),
                       title: Row(
                         children: [

@@ -18,19 +18,22 @@ class _NowPlayingBarState extends State<NowPlayingBar> {
       valueListenable: _mgr.isPlaying,
       builder: (context, playing, _) {
         final theme = Theme.of(context);
-        return Container(
-          height: 60,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                blurRadius: 8,
-                offset: const Offset(0, -2),
+        return Stack(
+          children: [
+            // Main bar background/content
+            Container(
+              height: 60,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, -2),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: Row(children: [
+              child: Row(children: [
             const SizedBox(width: 16),
             Expanded(
               child: ValueListenableBuilder<String?>(
@@ -95,7 +98,49 @@ class _NowPlayingBarState extends State<NowPlayingBar> {
               onPressed: playing ? () => _mgr.stop() : null,
             ),
             const SizedBox(width: 8),
-          ]),
+              ]),
+            ),
+            // Progress bar at the very top of the play bar (drawn above)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: ValueListenableBuilder<Duration?>(
+                valueListenable: _mgr.duration,
+                builder: (context, total, __) {
+                  // If duration unknown but playing, show indeterminate bar
+                  if ((total == null || total.inMilliseconds <= 0) && playing) {
+                    return LinearProgressIndicator(
+                      value: null,
+                      minHeight: 3,
+                      backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        theme.colorScheme.primary,
+                      ),
+                    );
+                  }
+                  if (total == null || total.inMilliseconds <= 0) {
+                    return const SizedBox.shrink();
+                  }
+                  return ValueListenableBuilder<Duration>(
+                    valueListenable: _mgr.position,
+                    builder: (context, pos, ___) {
+                      final denom = total.inMilliseconds == 0 ? 1 : total.inMilliseconds;
+                      final frac = (pos.inMilliseconds / denom).clamp(0.0, 1.0);
+                      return LinearProgressIndicator(
+                        value: frac.isNaN ? 0.0 : frac,
+                        minHeight: 3,
+                        backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          theme.colorScheme.primary,
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
         );
       },
     );
