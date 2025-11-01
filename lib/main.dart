@@ -33,17 +33,17 @@ Future<void> main() async {
   }
 
   // Ensure we stop playback when the OS signals the process is terminating.
-  // This helps with the mpv fallback which may be started detached.
+  // This helps with cleanup on app exit.
   try {
-    ProcessSignal.sigint.watch().listen((_) async {
-      await PlaybackManager.instance.stop();
+    ProcessSignal.sigint.watch().listen((_) {
+      PlaybackManager.instance.stop();
     });
-    ProcessSignal.sigterm.watch().listen((_) async {
-      await PlaybackManager.instance.stop();
+    ProcessSignal.sigterm.watch().listen((_) {
+      PlaybackManager.instance.stop();
     });
     // SIGHUP is useful for terminal/daemon shutdowns on POSIX systems.
-    ProcessSignal.sighup.watch().listen((_) async {
-      await PlaybackManager.instance.stop();
+    ProcessSignal.sighup.watch().listen((_) {
+      PlaybackManager.instance.stop();
     });
   } catch (e) {
     // Some platforms may not support all signals; ignore failures.
@@ -72,17 +72,17 @@ class _FairstreamAppState extends State<FairstreamApp> with WidgetsBindingObserv
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     // Ensure playback is stopped when the app state is disposed.
+    // Use unawaited to avoid blocking dispose, but the stop method will kill mpv immediately
     PlaybackManager.instance.stop();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // On desktop the lifecycle events can vary; ensure we stop playback when
-    // the app is detached or paused so mpv doesn't keep playing after close.
-    if (state == AppLifecycleState.detached || state == AppLifecycleState.paused) {
-      PlaybackManager.instance.stop();
-    }
+    // For a music app, we want audio to continue playing in the background
+    // The just_audio_background plugin handles media controls and notifications
+    // So we don't pause when the app goes to background - music continues!
+    // Users can pause using the notification controls or lock screen controls
   }
 
   @override
