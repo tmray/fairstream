@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
 import '../models/album.dart';
 import '../services/playback_manager.dart';
+import '../widgets/playing_indicator.dart';
 
 class AlbumDetail extends StatelessWidget {
   final Album album;
@@ -92,28 +93,41 @@ class AlbumDetail extends StatelessWidget {
           itemCount: album.tracks.length,
           itemBuilder: (c, i) {
             final t = album.tracks[i];
-            return ListTile(
-              leading: IconButton(
-                icon: const Icon(Icons.play_arrow),
-                onPressed: () => playback.playUrl(t.url, title: t.title),
-              ),
-              title: Row(
-                children: [
-                  Text(
-                    '${i + 1}. ',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      t.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
+            return ValueListenableBuilder<String?>(
+              valueListenable: playback.currentTitle,
+              builder: (context, currentTitle, _) {
+                final isPlaying = currentTitle == t.title;
+                return ValueListenableBuilder<bool>(
+                  valueListenable: playback.isPlaying,
+                  builder: (context, playing, _) {
+                    return ListTile(
+                      leading: IconButton(
+                        icon: (isPlaying && playing)
+                            ? const PlayingIndicator()
+                            : const Icon(Icons.play_arrow),
+                        onPressed: () => playback.playUrl(t.url, title: t.title),
+                      ),
+                      title: Row(
+                        children: [
+                          Text(
+                            '${i + 1}. ',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              t.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
             );
           },
         ),
