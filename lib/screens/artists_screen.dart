@@ -14,6 +14,7 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
   final _store = AlbumStore();
   final Map<String, _ArtistGroup> _groups = {};
   bool _loading = true;
+  String _query = '';
 
   @override
   void initState() {
@@ -88,34 +89,80 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _groups.isEmpty
-              ? const Center(child: Text('No artists yet'))
-              : ListView.separated(
-                  itemCount: _groups.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final keys = _groups.keys.toList()..sort((a, b) => _groups[a]!.displayName.toLowerCase().compareTo(_groups[b]!.displayName.toLowerCase()));
-                    final key = keys[index];
-                    final group = _groups[key]!;
-                    final cover = group.albums.firstWhere((a) => a.coverUrl != null, orElse: () => group.albums.first);
-
-                    return ListTile(
-                      leading: _ArtistAvatar(coverUrl: cover.coverUrl, theme: theme),
-                      title: Text(group.displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
-                      subtitle: Text('${group.albums.length} album${group.albums.length == 1 ? '' : 's'}'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ArtistDetail(
-                            artistKey: key,
-                            displayName: group.displayName,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: TextField(
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.search),
+                      hintText: 'Search artists',
+                      isDense: true,
+                      border: const OutlineInputBorder(),
+                      suffixIcon: _query.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: 'Clear',
+                              icon: const Icon(Icons.clear),
+                              onPressed: () => setState(() => _query = ''),
+                            ),
+                    ),
+                    onChanged: (v) => setState(() => _query = v),
+                  ),
                 ),
+                Expanded(
+                  child: _groups.isEmpty
+                      ? const Center(child: Text('No artists yet'))
+                      : Builder(
+                          builder: (context) {
+                            final queryLower = _query.trim().toLowerCase();
+                            final keys = _groups.keys.toList()
+                              ..sort((a, b) => _groups[a]!.displayName
+                                  .toLowerCase()
+                                  .compareTo(_groups[b]!.displayName.toLowerCase()));
+                            final filteredKeys = queryLower.isEmpty
+                                ? keys
+                                : keys.where((k) {
+                                    final name = _groups[k]!.displayName.toLowerCase();
+                                    return name.contains(queryLower) || k.contains(queryLower);
+                                  }).toList();
+
+                            if (filteredKeys.isEmpty) {
+                              return const Center(child: Text('No matches'));
+                            }
+
+                            return ListView.separated(
+                              itemCount: filteredKeys.length,
+                              separatorBuilder: (_, __) => const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final key = filteredKeys[index];
+                                final group = _groups[key]!;
+                                final cover = group.albums.firstWhere(
+                                  (a) => a.coverUrl != null,
+                                  orElse: () => group.albums.first,
+                                );
+                                return ListTile(
+                                  leading: _ArtistAvatar(coverUrl: cover.coverUrl, theme: theme),
+                                  title: Text(group.displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  subtitle: Text('${group.albums.length} album${group.albums.length == 1 ? '' : 's'}'),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ArtistDetail(
+                                        artistKey: key,
+                                        displayName: group.displayName,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
     );
   }
 }
