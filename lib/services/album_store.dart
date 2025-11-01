@@ -13,6 +13,8 @@ class AlbumStore {
   static const _key = 'albums_all';
   static const _migrationKey = 'albums_normalized_v2';
   static const _artistFixMigrationKey = 'albums_artist_fix_v1';
+  static const _albumsVersionKey = 'albums_version_v1';
+  static const _artistsIndexKey = 'artists_index_v1';
 
   /// Normalize stored track titles once per-install when we add normalization
   /// logic later. This will scan saved albums, normalize each track title and
@@ -336,6 +338,11 @@ class AlbumStore {
     final prefs = await SharedPreferences.getInstance();
     final encoded = jsonEncode(map.map((k, v) => MapEntry(k, v.map((a) => a.toMap()).toList())));
     await prefs.setString(_key, encoded);
+    // Bump albums version so dependent caches (like artist index) know to invalidate
+    final current = prefs.getInt(_albumsVersionKey) ?? 0;
+    await prefs.setInt(_albumsVersionKey, current + 1);
+    // Invalidate artist index cache (lazy rebuild on next request)
+    await prefs.remove(_artistsIndexKey);
   }
 
   Future<List<Album>> getAlbumsForFeed(String feedId) async {
@@ -349,6 +356,73 @@ class AlbumStore {
     await _ensureArtistsFixed();
     final m = await _loadMap();
     return m.values.expand((e) => e).toList();
+  }
+
+  // ------------ Cached Artist Index ------------
+
+  int _normalizeVersion(int? v) => v ?? 0;
+
+  String _artistKey(String s) => s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  Future<Map<String, dynamic>?> _loadArtistIndexRaw() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_artistsIndexKey);
+    if (raw == null) return null;
+    try {
+      return jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _saveArtistIndexRaw(Map<String, dynamic> data) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_artistsIndexKey, jsonEncode(data));
+  }
+
+  Future<Map<String, ArtistIndexEntry>> getArtistIndexCached() async {
+    final prefs = await SharedPreferences.getInstance();
+    final albumsVersion = _normalizeVersion(prefs.getInt(_albumsVersionKey));
+
+    // Try cache
+    final raw = await _loadArtistIndexRaw();
+    if (raw != null) {
+      final cachedVersion = _normalizeVersion(raw['version'] as int?);
+      final groupsRaw = raw['groups'];
+      if (cachedVersion == albumsVersion && groupsRaw is Map<String, dynamic>) {
+        final result = <String, ArtistIndexEntry>{};
+        groupsRaw.forEach((k, v) {
+          final m = v as Map<String, dynamic>;
+          result[k] = ArtistIndexEntry(
+            displayName: (m['displayName'] as String?) ?? k,
+            albumIds: ((m['albumIds'] as List<dynamic>?) ?? const []).map((e) => e.toString()).toList(),
+          );
+        });
+        return result;
+      }
+    }
+
+    // Build fresh
+    final albums = await getAllAlbums();
+    final groups = <String, ArtistIndexEntry>{};
+    for (final a in albums) {
+      final key = _artistKey(a.artist);
+      if (key.isEmpty) continue;
+      final g = groups.putIfAbsent(key, () => ArtistIndexEntry(displayName: a.artist, albumIds: []));
+      g.albumIds.add(a.id);
+      if (a.artist.trim().length > g.displayName.trim().length) {
+        g.displayName = a.artist;
+      }
+    }
+
+    // Persist with current albums version
+    final groupsJson = groups.map((k, v) => MapEntry(k, v.toJson()));
+    await _saveArtistIndexRaw({
+      'version': albumsVersion,
+      'groups': groupsJson,
+    });
+
+    return groups;
   }
 
   Future<bool> albumExists(String albumId) async {
@@ -423,4 +497,15 @@ class AlbumStore {
     m[feedId] = list;
     await _saveMap(m);
   }
+}
+
+class ArtistIndexEntry {
+  ArtistIndexEntry({required this.displayName, required this.albumIds});
+  String displayName;
+  final List<String> albumIds;
+
+  Map<String, dynamic> toJson() => {
+        'displayName': displayName,
+        'albumIds': albumIds,
+      };
 }

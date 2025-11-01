@@ -22,27 +22,33 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
   }
 
   Future<void> _load() async {
+    // Use cached artist index for quick grouping
+  final index = await _store.getArtistIndexCached();
+    // Load all albums once to hydrate album objects for counts/covers
     final albums = await _store.getAllAlbums();
+    final byId = {for (final a in albums) a.id: a};
+
     final groups = <String, _ArtistGroup>{};
-
-    for (final a in albums) {
-      final key = _normalizeArtist(a.artist);
-      if (key.isEmpty) continue;
-      final group = groups.putIfAbsent(key, () => _ArtistGroup(displayName: a.artist, albums: []));
-      group.albums.add(a);
-      // Prefer a more "complete" display name if encountered later (longer non-empty)
-      if (a.artist.trim().length > group.displayName.trim().length) {
-        group.displayName = a.artist;
+    index.forEach((key, entry) {
+      final grp = groups.putIfAbsent(key, () => _ArtistGroup(displayName: entry.displayName, albums: []));
+      for (final id in entry.albumIds) {
+        final album = byId[id];
+        if (album != null) grp.albums.add(album);
       }
-    }
+      // Ensure display name stays the most complete
+      for (final a in grp.albums) {
+        if (a.artist.trim().length > grp.displayName.trim().length) {
+          grp.displayName = a.artist;
+        }
+      }
+    });
 
-    // Sort artists alphabetically by display name
+    // Sort albums within artists
     for (final g in groups.values) {
-      // Optional: sort albums with most recent (published) first, then title
       g.albums.sort((a, b) {
         final ad = a.published ?? '';
         final bd = b.published ?? '';
-        final cmpDate = bd.compareTo(ad); // descending
+        final cmpDate = bd.compareTo(ad);
         if (cmpDate != 0) return cmpDate;
         return a.title.toLowerCase().compareTo(b.title.toLowerCase());
       });
@@ -56,7 +62,8 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
     });
   }
 
-  String _normalizeArtist(String s) => s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  // Cached index handles normalization; keep for potential future use
+  // String _normalizeArtist(String s) => s.trim().toLowerCase().replaceAll(RegExp(r'\\s+'), ' ');
 
   @override
   Widget build(BuildContext context) {
