@@ -34,7 +34,38 @@ class _NowPlayingBarState extends State<NowPlayingBar> {
                 ],
               ),
               child: Row(children: [
-            const SizedBox(width: 16),
+            const SizedBox(width: 8),
+            // Album artwork thumbnail
+            ValueListenableBuilder<String?>(
+              valueListenable: _mgr.currentArtwork,
+              builder: (context, artworkUrl, _) {
+                return Container(
+                  width: 48,
+                  height: 48,
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(4),
+                    color: theme.colorScheme.surfaceContainerHighest,
+                  ),
+                  child: artworkUrl != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: Image.network(
+                            artworkUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stack) => Icon(
+                              Icons.album,
+                              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                            ),
+                          ),
+                        )
+                      : Icon(
+                          Icons.album,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                );
+              },
+            ),
             Expanded(
               child: ValueListenableBuilder<String?>(
                 valueListenable: _mgr.currentTitle,

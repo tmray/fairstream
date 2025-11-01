@@ -42,6 +42,7 @@ class PlaybackManager {
   final ValueNotifier<bool> isPlaying = ValueNotifier<bool>(false);
   final ValueNotifier<String?> currentTitle = ValueNotifier<String?>(null);
   final ValueNotifier<String?> currentArtist = ValueNotifier<String?>(null);
+  final ValueNotifier<String?> currentArtwork = ValueNotifier<String?>(null);
   // Progress tracking
   final ValueNotifier<Duration> position = ValueNotifier<Duration>(Duration.zero);
   final ValueNotifier<Duration?> duration = ValueNotifier<Duration?>(null);
@@ -57,10 +58,17 @@ class PlaybackManager {
   bool _userInitiatedStop = false;
   bool _isHandlingCompletion = false;
 
-  Future<void> playQueue(List<Track> tracks, int startIndex) async {
+  String? _currentAlbumArtwork;
+  
+  void setAlbumArtwork(String? artworkUrl) {
+    _currentAlbumArtwork = artworkUrl;
+  }
+
+  Future<void> playQueue(List<Track> tracks, int startIndex, {String? albumArtwork}) async {
     if (tracks.isEmpty || startIndex < 0 || startIndex >= tracks.length) return;
     _queue = List<Track>.from(tracks);
     _currentIndex = startIndex;
+    _currentAlbumArtwork = albumArtwork;
     final t = _queue[_currentIndex];
     await playUrl(t.url, title: t.title, durationSeconds: t.durationSeconds);
   }
@@ -198,6 +206,7 @@ class PlaybackManager {
         } catch (_) {}
         currentTitle.value = title ?? url.split('/').last;
         currentArtist.value = artist;
+        currentArtwork.value = _currentAlbumArtwork;
         isPlaying.value = true;
         
         // Now that new track is started, allow completion handling for this track
@@ -305,6 +314,7 @@ class PlaybackManager {
       await _player!.setAudioSource(source);
   currentTitle.value = mediaItem.title;
   currentArtist.value = artist;
+  currentArtwork.value = _currentAlbumArtwork;
   _lastUrl = url;
       await _player!.play();
       
@@ -343,6 +353,7 @@ class PlaybackManager {
       isPlaying.value = false;
       currentTitle.value = null;
       currentArtist.value = null;
+      currentArtwork.value = null;
       _posTimer?.cancel();
       position.value = Duration.zero;
       duration.value = null;
@@ -351,6 +362,7 @@ class PlaybackManager {
     isPlaying.value = false;
     currentTitle.value = null;
     currentArtist.value = null;
+    currentArtwork.value = null;
     position.value = Duration.zero;
     duration.value = null;
     return _player?.stop();
@@ -432,6 +444,7 @@ class PlaybackManager {
     isPlaying.dispose();
     currentTitle.dispose();
     currentArtist.dispose();
+    currentArtwork.dispose();
     position.dispose();
     duration.dispose();
   }
