@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io' show Platform, Process, ProcessSignal, ProcessStartMode, File, Directory;
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
+import '../models/track.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 
@@ -48,8 +49,113 @@ class PlaybackManager {
   StreamSubscription<Duration>? _posSub;
   StreamSubscription<Duration?>? _durSub;
   Timer? _posTimer; // Linux fallback approximate timer
+  StreamSubscription<ProcessingState>? _procSub;
+
+  // Simple in-memory queue of tracks for album playback
+  List<Track> _queue = <Track>[];
+  int _currentIndex = -1;
+  bool _userInitiatedStop = false;
+  bool _isHandlingCompletion = false;
+
+  Future<void> playQueue(List<Track> tracks, int startIndex) async {
+    if (tracks.isEmpty || startIndex < 0 || startIndex >= tracks.length) return;
+    _queue = List<Track>.from(tracks);
+    _currentIndex = startIndex;
+    final t = _queue[_currentIndex];
+    await playUrl(t.url, title: t.title, durationSeconds: t.durationSeconds);
+  }
+
+  Future<void> next() async {
+    debugPrint('next() called - current: $_currentIndex, queue: ${_queue.length}');
+    if (_currentIndex >= 0 && _currentIndex + 1 < _queue.length) {
+      _currentIndex++;
+      final t = _queue[_currentIndex];
+      debugPrint('Playing track $_currentIndex: ${t.title}');
+      await playUrl(t.url, title: t.title, durationSeconds: t.durationSeconds);
+    }
+  }
+
+  Future<void> previous() async {
+    if (_currentIndex > 0) {
+      _currentIndex--;
+      final t = _queue[_currentIndex];
+      await playUrl(t.url, title: t.title, durationSeconds: t.durationSeconds);
+    }
+  }
+
+  Future<void> _handleCompleted() async {
+    // Prevent double-triggering from both timer and process exit
+    if (_isHandlingCompletion) {
+      debugPrint('Already handling completion, skipping... (flag already set)');
+      return;
+    }
+    _isHandlingCompletion = true;
+    
+    debugPrint('=== Track completed. Current index: $_currentIndex, Queue length: ${_queue.length} ===');
+    
+    // Small delay to let any duplicate calls get blocked by the flag
+    await Future.delayed(const Duration(milliseconds: 100));
+    
+    // Auto-advance if more tracks are queued
+    if (_currentIndex >= 0 && _currentIndex + 1 < _queue.length) {
+      debugPrint('Auto-advancing from track $_currentIndex to ${_currentIndex + 1}');
+      await next();
+    } else {
+      // End of queue
+      debugPrint('End of queue reached');
+      isPlaying.value = false;
+      _posTimer?.cancel();
+      position.value = Duration.zero;
+      duration.value = null;
+    }
+    
+    // Keep flag set for a bit longer to prevent any lingering triggers
+    await Future.delayed(const Duration(milliseconds: 100));
+    _isHandlingCompletion = false;
+    debugPrint('=== Completion handling finished ===');
+  }
+
+  Future<void> _stopInternal() async {
+    // Internal stop that doesn't set _userInitiatedStop flag
+    if (Platform.isLinux) {
+      try {
+        if (_linuxProcess != null) {
+          try {
+            _linuxProcess?.kill(ProcessSignal.sigkill);
+          } catch (_) {}
+        }
+        if (_linuxPid != null) {
+          try {
+            Process.killPid(_linuxPid!, ProcessSignal.sigkill);
+          } catch (_) {}
+          _linuxPid = null;
+        }
+        try {
+          if (await _pidFile.exists()) await _pidFile.delete();
+        } catch (_) {}
+      } catch (_) {}
+      _linuxProcess = null;
+      isPlaying.value = false;
+      currentTitle.value = null;
+      currentArtist.value = null;
+      _posTimer?.cancel();
+      position.value = Duration.zero;
+      duration.value = null;
+      return;
+    }
+    isPlaying.value = false;
+    currentTitle.value = null;
+    currentArtist.value = null;
+    position.value = Duration.zero;
+    duration.value = null;
+    await _player?.stop();
+  }
 
   Future<void> playUrl(String url, {String? title, int? durationSeconds}) async {
+    // Set flag to prevent the kill of the previous process from triggering completion
+    _isHandlingCompletion = true;
+    debugPrint('playUrl() called - blocking completion handler during track switch');
+    
     // Extract artist from URL filename (part before the dash)
     final filename = Uri.decodeComponent(url.split('/').last);
     String? artist;
@@ -68,23 +174,20 @@ class PlaybackManager {
     // may not be registered. This keeps playback working during development.
     if (Platform.isLinux) {
       try {
-        // Kill any previous process
-        await stop();
+        // Kill any previous process (internal, don't flag as user stop)
+        await _stopInternal();
         // reset progress
         position.value = Duration.zero;
         duration.value = durationSeconds != null && durationSeconds > 0
             ? Duration(seconds: durationSeconds)
             : null;
         // start mpv and mark playing.
-        // Use a detached process only during development (when running under
-        // flutter tooling) so the player doesn't get killed by tooling
-        // reconnects; in release/profile builds start mpv attached so that it
-        // exits with the app process.
-        final mode = kDebugMode ? ProcessStartMode.detached : ProcessStartMode.normal;
+        // Always use normal mode (not detached) so we can properly track when
+        // mpv finishes playing. This allows auto-advance to work correctly.
         _linuxProcess = await Process.start(
           'mpv',
           ['--no-video', '--really-quiet', url],
-          mode: mode,
+          mode: ProcessStartMode.normal,
         );
         _linuxPid = _linuxProcess?.pid;
         // Record PID to disk so subsequent app runs can clean up or reuse.
@@ -96,37 +199,59 @@ class PlaybackManager {
         currentTitle.value = title ?? url.split('/').last;
         currentArtist.value = artist;
         isPlaying.value = true;
+        
+        // Now that new track is started, allow completion handling for this track
+        _isHandlingCompletion = false;
+        debugPrint('New track started - re-enabling completion handler');
+        
         // Start a lightweight timer to approximate progress when duration is known
         _posTimer?.cancel();
         if (duration.value != null) {
           _posTimer = Timer.periodic(const Duration(milliseconds: 200), (t) {
+            if (duration.value == null) {
+              t.cancel();
+              return;
+            }
             final d = duration.value!;
             final nextMs = position.value.inMilliseconds + 200;
             if (nextMs >= d.inMilliseconds) {
               position.value = d;
               t.cancel();
+              // When we reach the end, trigger auto-advance
+              debugPrint('[TIMER] Progress timer reached end of track');
+              Future.microtask(() => _handleCompleted());
             } else {
               position.value = Duration(milliseconds: nextMs);
             }
           });
         }
-        // For detached processes, exitCode may not be meaningful in the same
-        // way; attempt to observe it when available but don't rely on it.
-        try {
-          _linuxProcess?.exitCode.then((code) async {
-            debugPrint('mpv exited with $code');
+        // Monitor mpv process exit - works in both detached and normal mode
+        // In detached mode, this may not fire reliably, so we rely on the timer
+        // completion as the primary mechanism
+        _linuxProcess?.exitCode.then((code) async {
+          debugPrint('[MPV EXIT] Process exited with code $code');
+          _linuxProcess = null;
+          _linuxPid = null;
+          _posTimer?.cancel();
+          // If the user pressed stop, don't auto-advance
+          if (_userInitiatedStop) {
+            debugPrint('[MPV EXIT] User initiated stop, not advancing');
+            _userInitiatedStop = false;
             isPlaying.value = false;
             currentTitle.value = null;
-            _linuxProcess = null;
-            _linuxPid = null;
-            _posTimer?.cancel();
             position.value = Duration.zero;
             duration.value = null;
-            try {
-              if (await _pidFile.exists()) await _pidFile.delete();
-            } catch (_) {}
-          });
-        } catch (_) {}
+          } else {
+            // Treat as natural completion - but only if timer hasn't handled it
+            debugPrint('[MPV EXIT] Triggering completion handler');
+            await _handleCompleted();
+          }
+          try {
+            if (await _pidFile.exists()) await _pidFile.delete();
+          } catch (_) {}
+        }).catchError((e) {
+          debugPrint('Error monitoring mpv exit: $e');
+        });
         _lastUrl = url;
         return;
       } catch (e) {
@@ -158,10 +283,16 @@ class PlaybackManager {
       _player ??= AudioPlayer();
       // Cancel any previous playing subscription
       await _playingSub?.cancel();
+      await _procSub?.cancel();
       await _posSub?.cancel();
       await _durSub?.cancel();
       _playingSub = _player!.playingStream.listen((playing) {
         isPlaying.value = playing;
+      });
+      _procSub = _player!.processingStateStream.listen((state) {
+        if (state == ProcessingState.completed) {
+          _handleCompleted();
+        }
       });
       _posSub = _player!.positionStream.listen((p) {
         position.value = p;
@@ -176,6 +307,10 @@ class PlaybackManager {
   currentArtist.value = artist;
   _lastUrl = url;
       await _player!.play();
+      
+      // Now that new track is started, allow completion handling for this track
+      _isHandlingCompletion = false;
+      debugPrint('New track started (just_audio) - re-enabling completion handler');
     } catch (e, st) {
       debugPrint('Playback error: $e\n$st');
       rethrow;
@@ -183,6 +318,7 @@ class PlaybackManager {
   }
 
   Future<void> stop() async {
+    _userInitiatedStop = true;
     if (Platform.isLinux) {
       try {
         // Try direct Process.kill first
@@ -289,6 +425,7 @@ class PlaybackManager {
   /// Dispose any subscriptions/notifiers if needed by callers.
   void dispose() {
     _playingSub?.cancel();
+    _procSub?.cancel();
     _posSub?.cancel();
     _durSub?.cancel();
     _posTimer?.cancel();
