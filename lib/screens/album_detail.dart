@@ -85,6 +85,26 @@ class _AlbumDetailState extends State<AlbumDetail> {
         title: Text(album.title),
         actions: [
           IconButton(
+            tooltip: 'Fix track titles',
+            icon: const Icon(Icons.format_list_bulleted),
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              final store = AlbumStore();
+              final ok = await store.repairTrackTitlesFromM3U(album);
+              if (!mounted) return;
+              if (ok) {
+                final refreshed = await AlbumStore().getAllAlbums();
+                final now = refreshed.firstWhere((a) => a.id == album.id, orElse: () => album);
+                setState(() {
+                  _hydratedAlbum = now;
+                });
+                messenger.showSnackBar(const SnackBar(content: Text('Track titles repaired from M3U')));
+              } else {
+                messenger.showSnackBar(const SnackBar(content: Text('No track title changes found')));
+              }
+            },
+          ),
+          IconButton(
             tooltip: 'Fix cover',
             icon: const Icon(Icons.image_outlined),
             onPressed: () async {

@@ -100,6 +100,22 @@ class M3UParser {
         return url;
       }
       
+      bool looksLikeBanner(String? url) => (url ?? '').contains('image_fixed_');
+      bool coverMatchesSlug(String? cover, String slug) {
+        if (cover == null || cover.isEmpty) return false;
+        return cover.contains('/$slug/');
+      }
+      String derivedCoverFromCanonical(String canonical) {
+        try {
+          final u = Uri.parse(canonical);
+          final slug = u.pathSegments.isNotEmpty ? u.pathSegments.first : '';
+          if (u.host.isEmpty || slug.isEmpty) return canonical;
+          return Uri(scheme: u.scheme, host: u.host, pathSegments: [slug, 'cover_480.jpg']).toString();
+        } catch (_) {
+          return canonical;
+        }
+      }
+      
       String? currentTitle;
       int? currentDuration;
 
@@ -114,11 +130,20 @@ class M3UParser {
           // Save current album if we have tracks
           if (currentTracks.isNotEmpty) {
             final canonical = canonicalFromTracks(currentTracks) ?? fallbackCanonicalFromM3u(m3uUrl);
+            // Validate/sanitize cover: avoid global banner and mismatched slug
+            var cover = currentAlbumCover;
+            try {
+              final u = Uri.parse(canonical);
+              final slug = u.pathSegments.isNotEmpty ? u.pathSegments.first : '';
+              if (looksLikeBanner(cover) || !coverMatchesSlug(cover, slug)) {
+                cover = derivedCoverFromCanonical(canonical);
+              }
+            } catch (_) {}
             albums.add(Album(
               id: canonical,
               title: currentAlbumTitle,
               artist: playlistTitle ?? 'Unknown Artist',
-              coverUrl: currentAlbumCover,
+              coverUrl: cover,
               tracks: List.from(currentTracks),
             ));
             currentTracks.clear();
@@ -128,13 +153,21 @@ class M3UParser {
           currentAlbumCover = lastSeenCoverUrl;
         } else if (line.startsWith('#EXTINF:')) {
           // Parse duration and title
-          // Format: #EXTINF:123, Artist - Title
-          final parts = line.substring('#EXTINF:'.length).split(',');
-          if (parts.isNotEmpty) {
-            currentDuration = _parseDuration(parts[0].trim());
-            if (parts.length > 1) {
-              currentTitle = parts[1].trim();
-            }
+          // Correct behavior: title is EVERYTHING after the first comma
+          // Example:
+          //   #EXTINF:146, Spiral Island, Lorenzo's Music – 1. So long ...
+          //   duration = 146, title = "Spiral Island, Lorenzo's Music – 1. So long ..."
+          final rest = line.substring('#EXTINF:'.length);
+          final commaIdx = rest.indexOf(',');
+          if (commaIdx >= 0) {
+            final durStr = rest.substring(0, commaIdx).trim();
+            final titleStr = rest.substring(commaIdx + 1).trim();
+            currentDuration = _parseDuration(durStr);
+            currentTitle = titleStr;
+          } else {
+            // Fallback: no comma found, treat entire rest as title
+            currentDuration = 0;
+            currentTitle = rest.trim();
           }
         } else if (!line.startsWith('#')) {
           // This is a URL line
@@ -157,12 +190,20 @@ class M3UParser {
 
       // Add the final album if we have tracks
       if (currentTracks.isNotEmpty) {
-  final canonical = canonicalFromTracks(currentTracks) ?? fallbackCanonicalFromM3u(m3uUrl);
+        final canonical = canonicalFromTracks(currentTracks) ?? fallbackCanonicalFromM3u(m3uUrl);
+        var cover = currentAlbumCover;
+        try {
+          final u = Uri.parse(canonical);
+          final slug = u.pathSegments.isNotEmpty ? u.pathSegments.first : '';
+          if (looksLikeBanner(cover) || !coverMatchesSlug(cover, slug)) {
+            cover = derivedCoverFromCanonical(canonical);
+          }
+        } catch (_) {}
         albums.add(Album(
           id: canonical,
           title: currentAlbumTitle,
           artist: playlistTitle ?? 'Unknown Artist',
-          coverUrl: currentAlbumCover,
+          coverUrl: cover,
           tracks: currentTracks,
         ));
       }

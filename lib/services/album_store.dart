@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/album.dart';
 import '../models/track.dart';
 import 'feed_metadata.dart';
+import 'feed_parser.dart';
 import 'text_normalizer.dart';
 
 class AlbumStore {
@@ -433,6 +434,91 @@ class AlbumStore {
       await _saveMap(m);
     }
     return updated;
+  }
+
+  // ------------ M3U Track Title Repair ------------
+
+  String? _albumLevelPlaylistUrl(Album album) {
+    // Try from album.id
+    try {
+      final u0 = Uri.parse(album.id.split('#').first);
+      if (u0.host.isNotEmpty && u0.pathSegments.isNotEmpty) {
+        final slug = u0.pathSegments.first;
+        if (slug.isNotEmpty && slug != 'playlist.m3u') {
+          return Uri(scheme: u0.scheme, host: u0.host, pathSegments: [slug, 'playlist.m3u']).toString();
+        }
+      }
+    } catch (_) {}
+    // Fallback to first track URL
+    if (album.tracks.isNotEmpty) {
+      try {
+        final t = Uri.parse(album.tracks.first.url);
+        if (t.host.isNotEmpty && t.pathSegments.isNotEmpty) {
+          final slug = t.pathSegments.first;
+          if (slug.isNotEmpty && slug != 'playlist.m3u') {
+            return Uri(scheme: t.scheme, host: t.host, pathSegments: [slug, 'playlist.m3u']).toString();
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// Re-parse the album-level M3U for this album and replace track titles.
+  /// Useful to fix legacy imports where #EXTINF titles were truncated at commas.
+  /// Returns true if tracks were updated and saved.
+  Future<bool> repairTrackTitlesFromM3U(Album album) async {
+    final playlist = _albumLevelPlaylistUrl(album);
+    if (playlist == null) return false;
+    try {
+      // Parse the album-level playlist which should yield exactly one album for the slug
+      final parser = FeedParser();
+      final parsed = await parser.parseFeed(playlist);
+      if (parsed.isEmpty) return false;
+
+      // Match on canonical key to be safe
+      final targetKey = _canonicalKeyForAlbum(album);
+      Album? updated;
+      for (final a in parsed) {
+        final k = _canonicalKeyForAlbum(a);
+        if (k != null && k == targetKey) {
+          updated = a;
+          break;
+        }
+      }
+      updated ??= parsed.first;
+
+      // If no change in tracks, skip
+      if (updated.tracks.length == album.tracks.length &&
+          List.generate(updated.tracks.length, (i) => updated!.tracks[i].title == album.tracks[i].title).every((e) => e)) {
+        return false;
+      }
+
+      final m = await _loadMap();
+      var changed = false;
+      m.forEach((feedId, list) {
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].id == album.id) {
+            list[i] = Album(
+              id: list[i].id,
+              title: list[i].title,
+              artist: list[i].artist,
+              coverUrl: list[i].coverUrl,
+              tracks: updated!.tracks,
+              description: list[i].description,
+              published: list[i].published,
+            );
+            changed = true;
+          }
+        }
+      });
+      if (changed) {
+        await _saveMap(m);
+      }
+      return changed;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<Map<String, List<Album>>> _loadMap() async {
