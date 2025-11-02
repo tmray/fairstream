@@ -4,17 +4,110 @@ import '../models/album.dart';
 import '../services/playback_manager.dart';
 import '../widgets/playing_indicator.dart';
 import 'artist_detail.dart';
+import '../services/feed_metadata.dart';
+import '../services/album_store.dart';
 
-class AlbumDetail extends StatelessWidget {
+class AlbumDetail extends StatefulWidget {
   final Album album;
   final PlaybackManager playback;
   const AlbumDetail({super.key, required this.album, required this.playback});
 
   @override
+  State<AlbumDetail> createState() => _AlbumDetailState();
+}
+
+class _AlbumDetailState extends State<AlbumDetail> {
+  Album? _hydratedAlbum;
+  // bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _hydrateMetadata();
+  }
+
+  Future<void> _hydrateMetadata() async {
+  // setState(() => _loading = true);
+    // Try to fetch richer metadata for this album
+  final metaService = _getMetadataService();
+  final meta = await metaService.findMetadataForAlbum(widget.album.id);
+    if (!mounted) return;
+    // Fallback cover heuristic: if metadata lacks an image or current cover looks like a banner,
+    // derive album cover as https://host/slug/cover_480.jpg from album id or first track URL.
+    String? fallbackCover() {
+      Uri? u;
+      try {
+        u = Uri.parse(widget.album.id.split('#').first);
+      } catch (_) {}
+      if (u == null || u.host.isEmpty || u.pathSegments.isEmpty || u.pathSegments.first == 'playlist.m3u') {
+        if (widget.album.tracks.isNotEmpty) {
+          try {
+            final t = Uri.parse(widget.album.tracks.first.url);
+            if (t.host.isNotEmpty && t.pathSegments.isNotEmpty) {
+              u = Uri(scheme: t.scheme, host: t.host, pathSegments: [t.pathSegments.first, 'cover_480.jpg']);
+            }
+          } catch (_) {}
+        }
+      } else {
+        u = Uri(scheme: u.scheme, host: u.host, pathSegments: [u.pathSegments.first, 'cover_480.jpg']);
+      }
+      return u?.toString();
+    }
+
+  final pickedCover = (meta?.imageUrl?.isNotEmpty == true)
+    ? meta!.imageUrl
+    : (fallbackCover() ?? widget.album.coverUrl);
+
+    setState(() {
+      _hydratedAlbum = Album(
+        id: widget.album.id,
+        title: (meta != null && meta.title.isNotEmpty) ? meta.title : widget.album.title,
+        artist: (meta != null && meta.artist.isNotEmpty) ? meta.artist : widget.album.artist,
+        coverUrl: pickedCover,
+        tracks: widget.album.tracks,
+        description: (meta != null && (meta.description?.isNotEmpty == true)) ? meta.description : widget.album.description,
+        published: (meta != null && (meta.published?.isNotEmpty == true)) ? meta.published : widget.album.published,
+      );
+    });
+  // setState(() => _loading = false);
+  }
+
+  FeedMetadataService _getMetadataService() {
+    return FeedMetadataService();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final album = _hydratedAlbum ?? widget.album;
     return Scaffold(
-      appBar: AppBar(title: Text(album.title)),
+      appBar: AppBar(
+        title: Text(album.title),
+        actions: [
+          IconButton(
+            tooltip: 'Fix cover',
+            icon: const Icon(Icons.image_outlined),
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              final store = AlbumStore();
+              final ok = await store.repairCoverForAlbum(album);
+              if (!mounted) return;
+              if (ok) {
+                // Rehydrate local state from storage
+                // Reload from storage to pick up updated cover
+                final refreshed = await AlbumStore().getAllAlbums();
+                final now = refreshed.firstWhere((a) => a.id == album.id, orElse: () => album);
+                setState(() {
+                  _hydratedAlbum = now;
+                });
+                messenger.showSnackBar(const SnackBar(content: Text('Cover updated from M3U')));
+              } else {
+                messenger.showSnackBar(const SnackBar(content: Text('No cover change needed')));
+              }
+            },
+          ),
+        ],
+      ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -78,7 +171,6 @@ class AlbumDetail extends StatelessWidget {
               ),
               if (album.description != null) ...[
                 const SizedBox(height: 8),
-                // Use a Container to avoid layout issues with Html widget
                 SizedBox(
                   width: double.infinity,
                   child: Html(
@@ -115,18 +207,18 @@ class AlbumDetail extends StatelessWidget {
           itemBuilder: (c, i) {
             final t = album.tracks[i];
             return ValueListenableBuilder<String?>(
-              valueListenable: playback.currentTitle,
+              valueListenable: widget.playback.currentTitle,
               builder: (context, currentTitle, _) {
                 final isPlaying = currentTitle == t.title;
                 return ValueListenableBuilder<bool>(
-                  valueListenable: playback.isPlaying,
+                  valueListenable: widget.playback.isPlaying,
                   builder: (context, playing, _) {
                     return ListTile(
                       leading: IconButton(
                         icon: (isPlaying && playing)
                             ? const PlayingIndicator()
                             : const Icon(Icons.play_arrow),
-                        onPressed: () => playback.playQueue(
+                        onPressed: () => widget.playback.playQueue(
                           album.tracks, 
                           i,
                           albumArtwork: album.coverUrl,

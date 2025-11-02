@@ -83,14 +83,14 @@ class _FeedsScreenState extends State<FeedsScreen> {
       int skippedCount = 0;
       
       for (final album in albums) {
-        // Check if album already exists before creating feed
-        final exists = await store.albumExists(album.id);
+        // Check if album already exists before creating feed (canonical check)
+        final exists = await store.albumExistsCanonical(album);
         if (exists) {
           skippedCount++;
           continue;
         }
         
-        final feedId = '${DateTime.now().millisecondsSinceEpoch}_${album.title}';
+  final feedId = '${DateTime.now().millisecondsSinceEpoch}_${album.title}';
         final feed = FeedSource(
           id: feedId,
           url: url,

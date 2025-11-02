@@ -15,6 +15,7 @@ class AlbumStore {
   static const _artistFixMigrationKey = 'albums_artist_fix_v1';
   static const _albumsVersionKey = 'albums_version_v1';
   static const _artistsIndexKey = 'artists_index_v1';
+  static const _dupeCleanupMigrationKey = 'albums_dupe_cleanup_v1';
 
   /// Normalize stored track titles once per-install when we add normalization
   /// logic later. This will scan saved albums, normalize each track title and
@@ -299,11 +300,32 @@ class AlbumStore {
     }
 
     if (metadata != null) {
+      // Fallback cover heuristic if feed lacks an image or current cover is a banner from root M3U
+      String? fallbackCover() {
+        Uri? u;
+        try {
+          u = Uri.parse(album.id.split('#').first);
+        } catch (_) {}
+        if (u == null || u.host.isEmpty || u.pathSegments.isEmpty || u.pathSegments.first == 'playlist.m3u') {
+          try {
+            final t = Uri.parse(album.tracks.first.url);
+            if (t.host.isNotEmpty && t.pathSegments.isNotEmpty) {
+              u = Uri(scheme: t.scheme, host: t.host, pathSegments: [t.pathSegments.first, 'cover_480.jpg']);
+            }
+          } catch (_) {}
+        } else {
+          u = Uri(scheme: u.scheme, host: u.host, pathSegments: [u.pathSegments.first, 'cover_480.jpg']);
+        }
+        return u?.toString();
+      }
+    final coverToUse = (metadata.imageUrl != null && metadata.imageUrl!.isNotEmpty)
+      ? metadata.imageUrl
+      : (fallbackCover() ?? album.coverUrl);
       final enrichedAlbum = Album(
         id: album.id,
         title: metadata.title.isNotEmpty ? metadata.title : album.title,
         artist: metadata.artist.isNotEmpty ? metadata.artist : album.artist,
-        coverUrl: metadata.imageUrl ?? album.coverUrl,
+        coverUrl: coverToUse,
         tracks: album.tracks,
         description: metadata.description,
         published: metadata.published,
@@ -324,6 +346,93 @@ class AlbumStore {
         await _saveMap(m);
       }
     }
+  }
+
+  // ------------ M3U Cover Repair ------------
+
+  String? _derivedCoverFromAlbum(Album album) {
+    Uri? u;
+    try {
+      u = Uri.parse(album.id.split('#').first);
+    } catch (_) {}
+    if (u == null || u.host.isEmpty || u.pathSegments.isEmpty || u.pathSegments.first == 'playlist.m3u') {
+      try {
+        if (album.tracks.isNotEmpty) {
+          final t = Uri.parse(album.tracks.first.url);
+          if (t.host.isNotEmpty && t.pathSegments.isNotEmpty) {
+            return Uri(scheme: t.scheme, host: t.host, pathSegments: [t.pathSegments.first, 'cover_480.jpg']).toString();
+          }
+        }
+      } catch (_) {}
+    } else {
+      return Uri(scheme: u.scheme, host: u.host, pathSegments: [u.pathSegments.first, 'cover_480.jpg']).toString();
+    }
+    return null;
+  }
+
+  bool _looksLikeBanner(String? url) => (url ?? '').contains('image_fixed_');
+
+  /// Repairs album cover for a single album using M3U-derived slug cover.
+  /// Returns true if updated and saved.
+  Future<bool> repairCoverForAlbum(Album album) async {
+    final derived = _derivedCoverFromAlbum(album);
+    if (derived == null) return false;
+    final needs = album.coverUrl == null || album.coverUrl!.isEmpty || _looksLikeBanner(album.coverUrl);
+    if (!needs && album.coverUrl == derived) return false;
+
+    final m = await _loadMap();
+    var changed = false;
+    m.forEach((feedId, list) {
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].id == album.id) {
+          list[i] = Album(
+            id: list[i].id,
+            title: list[i].title,
+            artist: list[i].artist,
+            coverUrl: derived,
+            tracks: list[i].tracks,
+            description: list[i].description,
+            published: list[i].published,
+          );
+          changed = true;
+        }
+      }
+    });
+    if (changed) {
+      await _saveMap(m);
+    }
+    return changed;
+  }
+
+  /// Repairs album covers across the library using M3U-derived slug cover when
+  /// the current image looks like a banner or is missing. Returns count updated.
+  Future<int> repairAlbumCoversFromM3U() async {
+    final m = await _loadMap();
+    var updated = 0;
+    m.forEach((feedId, list) {
+      for (var i = 0; i < list.length; i++) {
+        final a = list[i];
+        final derived = _derivedCoverFromAlbum(a);
+        if (derived == null) continue;
+        final needs = a.coverUrl == null || a.coverUrl!.isEmpty || _looksLikeBanner(a.coverUrl);
+        if (needs || a.coverUrl != derived) {
+          list[i] = Album(
+            id: a.id,
+            title: a.title,
+            artist: a.artist,
+            coverUrl: derived,
+            tracks: a.tracks,
+            description: a.description,
+            published: a.published,
+          );
+          updated++;
+        }
+      }
+    });
+    if (updated > 0) {
+      await _saveMap(m);
+    }
+    return updated;
   }
 
   Future<Map<String, List<Album>>> _loadMap() async {
@@ -354,6 +463,7 @@ class AlbumStore {
     // Ensure migrated titles are normalized once before returning albums.
     await _ensureStoredTitlesNormalized();
     await _ensureArtistsFixed();
+    await _ensureDuplicateCleanup();
     final m = await _loadMap();
     return m.values.expand((e) => e).toList();
   }
@@ -436,9 +546,183 @@ class AlbumStore {
     return false;
   }
 
+  /// Compute a canonical key for an album to detect duplicates across
+  /// root-level and album-level Faircamp M3U playlists.
+  /// Prefers deriving from the first track URL; falls back to album ID URL.
+  String? _canonicalKeyForAlbum(Album album) {
+    String? fromUrl(String url) {
+      try {
+        final u = Uri.parse(url);
+        if (u.host.isEmpty) return null;
+        if (u.pathSegments.isEmpty) return null;
+        final slug = u.pathSegments.first;
+        if (slug.isEmpty || slug == 'playlist.m3u') return null;
+        return '${u.scheme}://${u.host}/$slug';
+      } catch (_) {
+        return null;
+      }
+    }
+
+    // Try from first track url
+    if (album.tracks.isNotEmpty) {
+      final k = fromUrl(album.tracks.first.url);
+      if (k != null) return k;
+    }
+    // Try from album id before '#'
+    final id = album.id.split('#').first;
+    final k2 = fromUrl(id);
+    return k2;
+  }
+
+  /// Cross-feed duplicate check using canonical key derived from URLs.
+  Future<bool> albumExistsCanonical(Album album) async {
+    final key = _canonicalKeyForAlbum(album);
+    if (key == null) return await albumExists(album.id);
+    final m = await _loadMap();
+    for (final list in m.values) {
+      for (final a in list) {
+        final ak = _canonicalKeyForAlbum(a);
+        if (ak != null && ak == key) return true;
+      }
+    }
+    return false;
+  }
+
+  /// One-time cleanup to remove any pre-existing duplicates that may have
+  /// been imported before canonical dedupe logic existed.
+  Future<void> _ensureDuplicateCleanup() async {
+    final prefs = await SharedPreferences.getInstance();
+    final migrated = prefs.getBool(_dupeCleanupMigrationKey) ?? false;
+    if (migrated) return;
+    try {
+      await cleanupCanonicalDuplicates();
+    } catch (_) {}
+    await prefs.setBool(_dupeCleanupMigrationKey, true);
+  }
+
+  /// Remove existing duplicate albums across feeds based on canonical identity
+  /// (scheme://host/slug). Keeps the "best" representative and removes others.
+  /// Returns stats about how many were removed.
+  Future<DuplicateCleanupResult> cleanupCanonicalDuplicates() async {
+    final m = await _loadMap();
+    // Build groups of albums by canonical key
+  final groups = <String, List<_LocatedAlbum>>{};
+    m.forEach((feedId, list) {
+      for (final a in list) {
+        final key = _canonicalKeyForAlbum(a);
+        if (key == null) continue;
+  final g = groups.putIfAbsent(key, () => <_LocatedAlbum>[]);
+        g.add(_LocatedAlbum(feedId: feedId, album: a));
+      }
+    });
+
+    int removed = 0;
+    int kept = 0;
+    int groupsAffected = 0;
+    final removals = <String, Set<String>>{}; // feedId -> albumIds
+
+    int quality(Album a) {
+      var score = 0;
+      // Prefer album-level IDs (contain slug path segment before playlist.m3u)
+      try {
+        final u = Uri.parse(a.id.split('#').first);
+        if (u.host.isNotEmpty && u.pathSegments.isNotEmpty) {
+          final segs = u.pathSegments;
+          // album-level looks like [slug, 'playlist.m3u']
+          if (segs.length >= 2 && segs.first.isNotEmpty && segs.last.endsWith('.m3u')) {
+            score += 3;
+          } else if (segs.length == 1 && segs.first == 'playlist.m3u') {
+            score += 0;
+          }
+        }
+      } catch (_) {}
+      if ((a.coverUrl ?? '').isNotEmpty) score += 5;
+      if ((a.description ?? '').isNotEmpty) score += 3;
+      if ((a.published ?? '').isNotEmpty) score += 1;
+      score += a.tracks.length; // prefer more tracks
+      return score;
+    }
+
+    for (final entry in groups.entries) {
+      final dupes = entry.value;
+      if (dupes.length <= 1) continue;
+      groupsAffected++;
+      // choose best by quality
+      dupes.sort((a, b) => quality(b.album).compareTo(quality(a.album)));
+      final best = dupes.first.album;
+      // Merge best cover and description from all dupes
+      // Always pick the richest cover and description from all dupes
+      String? bestCover = best.coverUrl;
+      String? bestDesc = best.description;
+      String? bestPublished = best.published;
+      int coverScore = (bestCover ?? '').length;
+      int descScore = (bestDesc ?? '').length;
+      int pubScore = (bestPublished ?? '').length;
+      for (final d in dupes) {
+        final c = d.album.coverUrl;
+        if ((c ?? '').isNotEmpty && (c?.length ?? 0) > coverScore) {
+          bestCover = c;
+          coverScore = c!.length;
+        }
+        final desc = d.album.description;
+        if ((desc ?? '').isNotEmpty && (desc?.length ?? 0) > descScore) {
+          bestDesc = desc;
+          descScore = desc!.length;
+        }
+        final pub = d.album.published;
+        if ((pub ?? '').isNotEmpty && (pub?.length ?? 0) > pubScore) {
+          bestPublished = pub;
+          pubScore = pub!.length;
+        }
+      }
+      // If best is missing cover/desc/published, update it in place in the map
+      for (final d in dupes) {
+        if (d.album.id == best.id) {
+          final feedId = d.feedId;
+          final list = m[feedId] ?? [];
+          final idx = list.indexWhere((a) => a.id == best.id);
+          if (idx >= 0) {
+            list[idx] = Album(
+              id: best.id,
+              title: best.title,
+              artist: best.artist,
+              coverUrl: bestCover,
+              tracks: best.tracks,
+              description: bestDesc,
+              published: bestPublished,
+            );
+            m[feedId] = list;
+            // After merging, force refresh metadata from feed for canonical album
+            try {
+              await refreshAlbumMetadata(list[idx]);
+            } catch (_) {}
+          }
+        }
+      }
+      kept++;
+      for (final d in dupes.skip(1)) {
+        final set = removals.putIfAbsent(d.feedId, () => <String>{});
+        set.add(d.album.id);
+        removed++;
+      }
+    }
+
+    if (removed == 0) {
+      return DuplicateCleanupResult(groupsAffected: 0, removed: 0, kept: 0);
+    }
+
+    // Apply removals
+    removals.forEach((feedId, ids) {
+      final list = m[feedId] ?? [];
+      m[feedId] = list.where((a) => !ids.contains(a.id)).toList();
+    });
+    await _saveMap(m);
+    return DuplicateCleanupResult(groupsAffected: groupsAffected, removed: removed, kept: kept);
+  }
+
   Future<void> saveAlbum(String feedId, Album album) async {
-    // Check if this album already exists in any feed
-    final exists = await albumExists(album.id);
+    // Check if this album already exists in any feed (canonical check)
+    final exists = await albumExistsCanonical(album);
     if (exists) {
       debugPrint('Album "${album.title}" already exists, skipping duplicate');
       return;
@@ -509,3 +793,18 @@ class ArtistIndexEntry {
         'albumIds': albumIds,
       };
 }
+
+/// Result of a duplicate cleanup pass.
+class DuplicateCleanupResult {
+  final int groupsAffected;
+  final int removed;
+  final int kept;
+  const DuplicateCleanupResult({required this.groupsAffected, required this.removed, required this.kept});
+}
+
+class _LocatedAlbum {
+  final String feedId;
+  final Album album;
+  _LocatedAlbum({required this.feedId, required this.album});
+}
+

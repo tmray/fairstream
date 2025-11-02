@@ -64,11 +64,41 @@ class M3UParser {
         throw Exception('Invalid M3U file: Missing #EXTM3U header');
       }
 
-      String? playlistTitle;
-      final albums = <Album>[];
-      var currentTracks = <Track>[];
-      var currentAlbumTitle = 'Unknown Album';
-      var currentCoverUrl = '';
+  String? playlistTitle;
+  final albums = <Album>[];
+  var currentTracks = <Track>[];
+  var currentAlbumTitle = 'Unknown Album';
+  // lastSeenCoverUrl updates whenever we see an #EXTIMG line (may be a global banner or album cover)
+  // currentAlbumCover is the snapshot of the cover that applies to the current album (captured on #EXTALB)
+  String lastSeenCoverUrl = '';
+  String currentAlbumCover = '';
+  String? canonicalFromTracks(List<Track> tracks) {
+        if (tracks.isEmpty) return null;
+        try {
+          final u = Uri.parse(tracks.first.url);
+          if (u.host.isEmpty || u.pathSegments.isEmpty) return null;
+          final slug = u.pathSegments.first;
+          if (slug.isEmpty || slug == 'playlist.m3u') return null;
+          return '${u.scheme}://${u.host}/$slug';
+        } catch (_) {
+          return null;
+        }
+      }
+
+  String fallbackCanonicalFromM3u(String url) {
+        try {
+          final u = Uri.parse(url);
+          if (u.host.isEmpty) return url;
+          if (u.pathSegments.length >= 2) {
+            // e.g., /album-slug/playlist.m3u
+            final slug = u.pathSegments.first;
+            if (slug.isNotEmpty && slug != 'playlist.m3u') {
+              return '${u.scheme}://${u.host}/$slug';
+            }
+          }
+        } catch (_) {}
+        return url;
+      }
       
       String? currentTitle;
       int? currentDuration;
@@ -79,20 +109,23 @@ class M3UParser {
         if (line.startsWith('#PLAYLIST:')) {
           playlistTitle = line.substring('#PLAYLIST:'.length).trim();
         } else if (line.startsWith('#EXTIMG:')) {
-          currentCoverUrl = line.substring('#EXTIMG:'.length).trim();
+          lastSeenCoverUrl = line.substring('#EXTIMG:'.length).trim();
         } else if (line.startsWith('#EXTALB:')) {
           // Save current album if we have tracks
           if (currentTracks.isNotEmpty) {
+            final canonical = canonicalFromTracks(currentTracks) ?? fallbackCanonicalFromM3u(m3uUrl);
             albums.add(Album(
-              id: '$m3uUrl#$currentAlbumTitle',
+              id: canonical,
               title: currentAlbumTitle,
               artist: playlistTitle ?? 'Unknown Artist',
-              coverUrl: currentCoverUrl,
+              coverUrl: currentAlbumCover,
               tracks: List.from(currentTracks),
             ));
             currentTracks.clear();
           }
           currentAlbumTitle = line.substring('#EXTALB:'.length).trim();
+          // Snapshot the cover that applies to this album based on the most recent #EXTIMG before this #EXTALB
+          currentAlbumCover = lastSeenCoverUrl;
         } else if (line.startsWith('#EXTINF:')) {
           // Parse duration and title
           // Format: #EXTINF:123, Artist - Title
@@ -124,11 +157,12 @@ class M3UParser {
 
       // Add the final album if we have tracks
       if (currentTracks.isNotEmpty) {
+  final canonical = canonicalFromTracks(currentTracks) ?? fallbackCanonicalFromM3u(m3uUrl);
         albums.add(Album(
-          id: '$m3uUrl#$currentAlbumTitle',
+          id: canonical,
           title: currentAlbumTitle,
           artist: playlistTitle ?? 'Unknown Artist',
-          coverUrl: currentCoverUrl,
+          coverUrl: currentAlbumCover,
           tracks: currentTracks,
         ));
       }

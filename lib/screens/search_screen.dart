@@ -65,6 +65,26 @@ class _SearchScreenState extends State<SearchScreen> {
         title: const Text('Search'),
         actions: [
           IconButton(
+            tooltip: 'Clean duplicate albums',
+            icon: const Icon(Icons.auto_fix_high),
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              setState(() => _loading = true);
+              final result = await _store.cleanupCanonicalDuplicates();
+              await _primeIndex();
+              if (!mounted) return;
+              messenger.showSnackBar(
+                SnackBar(
+                  content: Text(
+                    result.removed == 0
+                        ? 'No duplicates found.'
+                        : 'Removed ${result.removed} duplicate album${result.removed == 1 ? '' : 's'} across ${result.groupsAffected} group${result.groupsAffected == 1 ? '' : 's'}',
+                  ),
+                ),
+              );
+            },
+          ),
+          IconButton(
             tooltip: 'Clear recent searches',
             icon: const Icon(Icons.delete_sweep),
             onPressed: () async {
