@@ -57,6 +57,8 @@ class PlaybackManager {
   int _currentIndex = -1;
   bool _userInitiatedStop = false;
   bool _isHandlingCompletion = false;
+  // Serialize track switches to avoid overlapping starts
+  Completer<void>? _switchCompleter;
 
   String? _currentAlbumArtwork;
   
@@ -160,6 +162,16 @@ class PlaybackManager {
   }
 
   Future<void> playUrl(String url, {String? title, int? durationSeconds}) async {
+    // Wait for any in-progress switch to complete
+    while (_switchCompleter != null) {
+      try {
+        await _switchCompleter!.future;
+      } catch (_) {
+        break;
+      }
+    }
+    // Create a new switch scope
+    _switchCompleter = Completer<void>();
     // Set flag to prevent the kill of the previous process from triggering completion
     _isHandlingCompletion = true;
     debugPrint('playUrl() called - blocking completion handler during track switch');
@@ -184,6 +196,8 @@ class PlaybackManager {
       try {
         // Kill any previous process (internal, don't flag as user stop)
         await _stopInternal();
+        // Give the OS a brief moment to reap the prior process, if any
+        await Future.delayed(const Duration(milliseconds: 50));
         // reset progress
         position.value = Duration.zero;
         duration.value = durationSeconds != null && durationSeconds > 0
@@ -262,6 +276,9 @@ class PlaybackManager {
           debugPrint('Error monitoring mpv exit: $e');
         });
         _lastUrl = url;
+        // Complete switch scope for linux path
+        _switchCompleter?.complete();
+        _switchCompleter = null;
         return;
       } catch (e) {
         debugPrint('Linux fallback player failed: $e');
@@ -316,13 +333,20 @@ class PlaybackManager {
   currentArtist.value = artist;
   currentArtwork.value = _currentAlbumArtwork;
   _lastUrl = url;
-      await _player!.play();
+  // Stop any current just_audio playback explicitly before starting
+  try { await _player!.stop(); } catch (_) {}
+  await _player!.play();
       
       // Now that new track is started, allow completion handling for this track
       _isHandlingCompletion = false;
       debugPrint('New track started (just_audio) - re-enabling completion handler');
+      // Complete switch scope for just_audio path
+      _switchCompleter?.complete();
+      _switchCompleter = null;
     } catch (e, st) {
       debugPrint('Playback error: $e\n$st');
+      _switchCompleter?.completeError(e);
+      _switchCompleter = null;
       rethrow;
     }
   }
