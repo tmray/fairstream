@@ -97,15 +97,11 @@ class _FairstreamAppState extends State<FairstreamApp> with WidgetsBindingObserv
       builder: (context, child) {
         return Stack(
           children: [
-            Padding(
-              // Add padding at the bottom to account for playbar height
-              padding: const EdgeInsets.only(bottom: kToolbarHeight),
-              child: child ?? const SizedBox.shrink(),
-            ),
+            child ?? const SizedBox.shrink(),
             Positioned(
               left: 0,
               right: 0,
-              bottom: 0,
+              bottom: 80.0,
               child: NowPlayingBar(player: PlaybackManager.instance.player),
             ),
           ],

@@ -3,8 +3,6 @@ import 'library_screen.dart';
 import 'feeds_screen.dart';
 import 'artists_screen.dart';
 import 'search_screen.dart';
-// ...existing code...
-// ...existing code...
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,40 +13,64 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
-  // ...existing code...
+  
+  // Navigation keys for each tab - allows each tab to maintain its own navigation stack
+  final List<GlobalKey<NavigatorState>> _navigatorKeys = [
+    GlobalKey<NavigatorState>(), // Search
+    GlobalKey<NavigatorState>(), // Library
+    GlobalKey<NavigatorState>(), // Artists
+    GlobalKey<NavigatorState>(), // Feeds
+  ];
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('FairStreamApp'),
-      ),
-      body: _buildBody(),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) => setState(() => _selectedIndex = index),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
-          NavigationDestination(icon: Icon(Icons.library_music), label: 'Library'),
-          NavigationDestination(icon: Icon(Icons.group), label: 'Artists'),
-          NavigationDestination(icon: Icon(Icons.rss_feed), label: 'Feeds'),
-        ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        
+        // Try to pop the current tab's navigation stack
+        final navigator = _navigatorKeys[_selectedIndex].currentState;
+        if (navigator != null && navigator.canPop()) {
+          navigator.pop();
+        }
+      },
+      child: Scaffold(
+        body: Padding(
+          // Add padding at the bottom for the playbar that sits above the nav bar
+          padding: const EdgeInsets.only(bottom: 60.0),
+          child: IndexedStack(
+            index: _selectedIndex,
+            children: [
+              _buildNavigator(0, const SearchScreen()),
+              _buildNavigator(1, const LibraryScreen()),
+              _buildNavigator(2, const ArtistsScreen()),
+              _buildNavigator(3, const FeedsScreen()),
+            ],
+          ),
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _selectedIndex,
+          onDestinationSelected: (index) => setState(() => _selectedIndex = index),
+          destinations: const [
+            NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
+            NavigationDestination(icon: Icon(Icons.library_music), label: 'Library'),
+            NavigationDestination(icon: Icon(Icons.group), label: 'Artists'),
+            NavigationDestination(icon: Icon(Icons.rss_feed), label: 'Feeds'),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildBody() {
-    switch (_selectedIndex) {
-      case 0:
-        return const SearchScreen();
-      case 1:
-        return const LibraryScreen();
-      case 2:
-        return const ArtistsScreen();
-      case 3:
-        return const FeedsScreen();
-      default:
-        return const Center(child: Text('Unknown View')); 
-    }
+  Widget _buildNavigator(int index, Widget child) {
+    return Navigator(
+      key: _navigatorKeys[index],
+      onGenerateRoute: (routeSettings) {
+        return MaterialPageRoute(
+          builder: (context) => child,
+        );
+      },
+    );
   }
 }
