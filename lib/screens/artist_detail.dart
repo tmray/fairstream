@@ -3,6 +3,7 @@ import '../services/album_store.dart';
 import '../models/album.dart';
 import '../services/playback_manager.dart';
 import '../services/feed_metadata.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'album_detail.dart';
 
 class ArtistDetail extends StatefulWidget {
@@ -21,6 +22,7 @@ class _ArtistDetailState extends State<ArtistDetail> {
   bool _loading = true;
   String? _artistDescription;
   String? _artistImageUrl;
+  String? _artistLink;
 
   @override
   void initState() {
@@ -67,7 +69,28 @@ class _ArtistDetailState extends State<ArtistDetail> {
     setState(() {
       _artistDescription = meta?.description;
       _artistImageUrl = meta?.imageUrl;
+      _artistLink = meta?.link;
     });
+  }
+
+  Future<void> _openArtistLink() async {
+    final link = _artistLink;
+    if (link == null || link.isEmpty) return;
+    final uri = Uri.tryParse(link);
+    if (uri == null) return;
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open link')),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open link')),
+      );
+    }
   }
 
   @override
@@ -76,6 +99,14 @@ class _ArtistDetailState extends State<ArtistDetail> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.displayName),
+        actions: [
+          if (_artistLink != null && _artistLink!.isNotEmpty)
+            IconButton(
+              tooltip: 'View on web',
+              icon: const Icon(Icons.open_in_new),
+              onPressed: _openArtistLink,
+            ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
