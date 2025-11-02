@@ -157,11 +157,27 @@ class _ArtistDetailState extends State<ArtistDetail> {
                                     ),
                                   const SizedBox(width: 12),
                                   Expanded(
-                                    child: Text(
-                                      _artistDescription ?? '',
-                                      style: theme.textTheme.bodyMedium?.copyWith(
-                                        color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
-                                      ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          _artistDescription ?? '',
+                                          style: theme.textTheme.bodyMedium?.copyWith(
+                                            color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                                          ),
+                                        ),
+                                        if (_artistLink != null && _artistLink!.isNotEmpty) ...[
+                                          const SizedBox(height: 8),
+                                          Align(
+                                            alignment: Alignment.centerLeft,
+                                            child: TextButton.icon(
+                                              onPressed: _openArtistLink,
+                                              icon: const Icon(Icons.open_in_new),
+                                              label: const Text('View on web'),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
                                   ),
                                 ],
