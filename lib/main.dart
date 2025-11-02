@@ -5,9 +5,30 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:audio_session/audio_session.dart';
 import 'dart:io' show Platform, ProcessSignal;
 import 'services/playback_manager.dart';
+import 'package:window_manager/window_manager.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Set up window size for mobile testing on desktop
+  if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+    await windowManager.ensureInitialized();
+    
+    const windowOptions = WindowOptions(
+      size: Size(390, 844), // iPhone-like dimensions
+      minimumSize: Size(320, 568), // Minimum mobile size
+      center: true,
+      backgroundColor: Colors.transparent,
+      skipTaskbar: false,
+      titleBarStyle: TitleBarStyle.normal,
+      title: 'FairStream Music',
+    );
+    
+    await windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
+    });
+  }
 
   // Initialize background audio (notifications / media controls)
   // just_audio_background and the underlying native just_audio plugin
