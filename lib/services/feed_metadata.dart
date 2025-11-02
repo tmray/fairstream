@@ -37,7 +37,6 @@ class FeedMetadataService {
       if (albumPath.isEmpty) return null;
 
   // Metadata lookup for albumPath
-
       // Extract base URL (everything before the album path)
       final baseUri = uri.replace(path: '');
       
@@ -173,4 +172,96 @@ class FeedMetadataService {
       return null;
     }
   }
+
+  /// Fetch and parse the channel-level metadata (artist/site description & image)
+  /// for a given audio or playlist URL.
+  Future<ArtistChannelMetadata?> findArtistChannelFromUrl(String anyTrackOrPlaylistUrl) async {
+    try {
+      final uri = Uri.parse(anyTrackOrPlaylistUrl);
+      final baseUri = uri.replace(path: '');
+      final rssUri = baseUri.replace(path: '/feed.rss');
+      final atomUri = baseUri.replace(path: '/feed.atom');
+
+      // Prefer RSS
+      try {
+        final resp = await http.get(rssUri);
+        if (resp.statusCode == 200) {
+          return _parseRssChannelMeta(resp.body, baseUri.toString());
+        }
+      } catch (_) {}
+
+      // Fallback to Atom
+      try {
+        final resp = await http.get(atomUri);
+        if (resp.statusCode == 200) {
+          return _parseAtomChannelMeta(resp.body, baseUri.toString());
+        }
+      } catch (_) {}
+    } catch (_) {}
+    return null;
+  }
+
+  ArtistChannelMetadata? _parseRssChannelMeta(String xml, String siteLink) {
+    try {
+      final doc = XmlDocument.parse(xml);
+      final channel = doc.findAllElements('channel').firstOrNull;
+      if (channel == null) return null;
+      final description = cleanHtmlContent(channel.findElements('description').firstOrNull?.innerText);
+      String? imageUrl;
+      final image = channel.findElements('image').firstOrNull;
+      if (image != null) {
+        imageUrl = image.findElements('url').firstOrNull?.innerText;
+      }
+      final title = cleanHtmlContent(channel.findElements('title').firstOrNull?.innerText);
+      final link = channel.findElements('link').firstOrNull?.innerText ?? siteLink;
+      return ArtistChannelMetadata(
+        title: title,
+        description: description,
+        imageUrl: imageUrl,
+        link: link,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  ArtistChannelMetadata? _parseAtomChannelMeta(String xml, String siteLink) {
+    try {
+      final doc = XmlDocument.parse(xml);
+      final feed = doc.findAllElements('feed').firstOrNull;
+      if (feed == null) return null;
+      final title = cleanHtmlContent(feed.findElements('title').firstOrNull?.innerText);
+      final subtitle = cleanHtmlContent(feed.findElements('subtitle').firstOrNull?.innerText);
+      String? imageUrl;
+      final logo = feed.findElements('logo').firstOrNull;
+      if (logo != null) imageUrl = logo.innerText;
+      // Attempt to get site link
+      String link = siteLink;
+      final links = feed.findAllElements('link');
+      final alt = links.firstWhere(
+        (l) => (l.getAttribute('rel') ?? '') == 'alternate',
+        orElse: () => links.firstOrNull ?? XmlElement(XmlName('link')),
+      );
+      link = alt.getAttribute('href') ?? siteLink;
+
+      return ArtistChannelMetadata(
+        title: title,
+        description: subtitle,
+        imageUrl: imageUrl,
+        link: link,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+// Artist/site-level metadata for a Faircamp feed (channel description & image)
+class ArtistChannelMetadata {
+  final String? title;
+  final String? description;
+  final String? imageUrl;
+  final String? link;
+
+  const ArtistChannelMetadata({this.title, this.description, this.imageUrl, this.link});
 }
