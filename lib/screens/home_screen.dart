@@ -51,7 +51,19 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _selectedIndex,
-          onDestinationSelected: (index) => setState(() => _selectedIndex = index),
+          onDestinationSelected: (index) {
+            if (index == _selectedIndex) {
+              // Reselecting the current tab: pop to that tab's root
+              final nav = _navigatorKeys[index].currentState;
+              if (nav != null) {
+                while (nav.canPop()) {
+                  nav.pop();
+                }
+              }
+            } else {
+              setState(() => _selectedIndex = index);
+            }
+          },
           destinations: const [
             NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
             NavigationDestination(icon: Icon(Icons.library_music), label: 'Library'),
