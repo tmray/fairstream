@@ -86,7 +86,7 @@ class _NowPlayingBarState extends State<NowPlayingBar> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          if (playing && title != null && artist != null)
+                          if (title != null && artist != null)
                             Text(
                               artist,
                               style: theme.textTheme.bodySmall?.copyWith(

@@ -34,6 +34,7 @@ class PlaybackManager {
   AudioPlayer? get player => _player;
   Process? _linuxProcess;
   String? _lastUrl;
+  int? _lastDurationSeconds;
   int? _linuxPid;
   // PID file used to track a possibly-orphaned mpv process between runs.
   File get _pidFile => File('${Directory.systemTemp.path}/fairstream_mpv.pid');
@@ -146,16 +147,12 @@ class PlaybackManager {
       } catch (_) {}
       _linuxProcess = null;
       isPlaying.value = false;
-      currentTitle.value = null;
-      currentArtist.value = null;
       _posTimer?.cancel();
       position.value = Duration.zero;
       duration.value = null;
       return;
     }
     isPlaying.value = false;
-    currentTitle.value = null;
-    currentArtist.value = null;
     position.value = Duration.zero;
     duration.value = null;
     await _player?.stop();
@@ -222,6 +219,8 @@ class PlaybackManager {
         currentArtist.value = artist;
         currentArtwork.value = _currentAlbumArtwork;
         isPlaying.value = true;
+        _lastUrl = url;
+        _lastDurationSeconds = durationSeconds;
         
         // Now that new track is started, allow completion handling for this track
         _isHandlingCompletion = false;
@@ -261,7 +260,6 @@ class PlaybackManager {
             debugPrint('[MPV EXIT] User initiated stop, not advancing');
             _userInitiatedStop = false;
             isPlaying.value = false;
-            currentTitle.value = null;
             position.value = Duration.zero;
             duration.value = null;
           } else {
@@ -275,7 +273,6 @@ class PlaybackManager {
         }).catchError((e) {
           debugPrint('Error monitoring mpv exit: $e');
         });
-        _lastUrl = url;
         // Complete switch scope for linux path
         _switchCompleter?.complete();
         _switchCompleter = null;
@@ -333,6 +330,7 @@ class PlaybackManager {
   currentArtist.value = artist;
   currentArtwork.value = _currentAlbumArtwork;
   _lastUrl = url;
+  _lastDurationSeconds = durationSeconds;
   // Stop any current just_audio playback explicitly before starting
   try { await _player!.stop(); } catch (_) {}
   await _player!.play();
@@ -375,18 +373,12 @@ class PlaybackManager {
       } catch (_) {}
       _linuxProcess = null;
       isPlaying.value = false;
-      currentTitle.value = null;
-      currentArtist.value = null;
-      currentArtwork.value = null;
       _posTimer?.cancel();
       position.value = Duration.zero;
       duration.value = null;
       return;
     }
     isPlaying.value = false;
-    currentTitle.value = null;
-    currentArtist.value = null;
-    currentArtwork.value = null;
     position.value = Duration.zero;
     duration.value = null;
     return _player?.stop();
@@ -418,33 +410,56 @@ class PlaybackManager {
   /// Resume playback for the external mpv fallback (SIGCONT) or the native player.
   Future<void> resume() async {
     if (Platform.isLinux) {
-      try {
-        if (_linuxProcess != null) {
-          try {
-            _linuxProcess?.kill(ProcessSignal.sigcont);
-          } catch (_) {}
-        } else if (_linuxPid != null) {
-          try {
-            Process.killPid(_linuxPid!, ProcessSignal.sigcont);
-          } catch (_) {}
-        }
-        isPlaying.value = true;
-      } catch (_) {
-        // ignore
-      }
-      // restart timer if we have a duration
-      if (duration.value != null) {
-        _posTimer?.cancel();
-        _posTimer = Timer.periodic(const Duration(milliseconds: 200), (t) {
-          final d = duration.value!;
-          final nextMs = position.value.inMilliseconds + 200;
-          if (nextMs >= d.inMilliseconds) {
-            position.value = d;
-            t.cancel();
-          } else {
-            position.value = Duration(milliseconds: nextMs);
+      // If we still have a process, send SIGCONT; otherwise restart last URL
+      if (_linuxProcess != null || _linuxPid != null) {
+        try {
+          if (_linuxProcess != null) {
+            try {
+              _linuxProcess?.kill(ProcessSignal.sigcont);
+            } catch (_) {}
+          } else if (_linuxPid != null) {
+            try {
+              Process.killPid(_linuxPid!, ProcessSignal.sigcont);
+            } catch (_) {}
           }
-        });
+          isPlaying.value = true;
+        } catch (_) {
+          // ignore and fall back to restart
+        }
+        // restart timer if we have a duration
+        if (duration.value != null) {
+          _posTimer?.cancel();
+          _posTimer = Timer.periodic(const Duration(milliseconds: 200), (t) {
+            final d = duration.value!;
+            final nextMs = position.value.inMilliseconds + 200;
+            if (nextMs >= d.inMilliseconds) {
+              position.value = d;
+              t.cancel();
+            } else {
+              position.value = Duration(milliseconds: nextMs);
+            }
+          });
+        }
+        return;
+      }
+      // No process to resume: restart last known URL from beginning
+      if (_lastUrl != null) {
+        return playUrl(_lastUrl!, title: currentTitle.value, durationSeconds: _lastDurationSeconds);
+      }
+      return;
+    }
+    // Non-Linux (just_audio)
+    if (_player == null) {
+      if (_lastUrl != null) {
+        return playUrl(_lastUrl!, title: currentTitle.value, durationSeconds: _lastDurationSeconds);
+      }
+      return;
+    }
+    final state = _player!.processingState;
+    // If player is idle/completed (after stop), set source again by replaying last URL
+    if (state == ProcessingState.idle || state == ProcessingState.completed) {
+      if (_lastUrl != null) {
+        return playUrl(_lastUrl!, title: currentTitle.value, durationSeconds: _lastDurationSeconds);
       }
       return;
     }
