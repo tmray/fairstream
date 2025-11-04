@@ -61,8 +61,8 @@ class _AlbumDetailState extends State<AlbumDetail> {
     setState(() {
       _hydratedAlbum = Album(
         id: widget.album.id,
-        title: (meta != null && meta.title.isNotEmpty) ? meta.title : widget.album.title,
-        artist: (meta != null && meta.artist.isNotEmpty) ? meta.artist : widget.album.artist,
+        title: widget.album.title, // Keep M3U album title
+        artist: widget.album.artist, // Keep M3U artist
         coverUrl: pickedCover,
         tracks: widget.album.tracks,
         description: (meta != null && (meta.description?.isNotEmpty == true)) ? meta.description : widget.album.description,

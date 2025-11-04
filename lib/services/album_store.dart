@@ -17,6 +17,7 @@ class AlbumStore {
   static const _albumsVersionKey = 'albums_version_v1';
   static const _artistsIndexKey = 'artists_index_v1';
   static const _dupeCleanupMigrationKey = 'albums_dupe_cleanup_v1';
+  static const _titleFixMigrationKey = 'albums_title_fix_v1';
 
   /// Normalize stored track titles once per-install when we add normalization
   /// logic later. This will scan saved albums, normalize each track title and
@@ -324,8 +325,8 @@ class AlbumStore {
       : (fallbackCover() ?? album.coverUrl);
       final enrichedAlbum = Album(
         id: album.id,
-        title: metadata.title.isNotEmpty ? metadata.title : album.title,
-        artist: metadata.artist.isNotEmpty ? metadata.artist : album.artist,
+        title: album.title, // Keep M3U album title (from #EXTALB)
+        artist: album.artist, // Keep M3U artist (from #PLAYLIST)
         coverUrl: coverToUse,
         tracks: album.tracks,
         description: metadata.description,
@@ -550,6 +551,7 @@ class AlbumStore {
     await _ensureStoredTitlesNormalized();
     await _ensureArtistsFixed();
     await _ensureDuplicateCleanup();
+    await _ensureAlbumTitlesFixed();
     final m = await _loadMap();
     return m.values.expand((e) => e).toList();
   }
@@ -684,6 +686,53 @@ class AlbumStore {
       await cleanupCanonicalDuplicates();
     } catch (_) {}
     await prefs.setBool(_dupeCleanupMigrationKey, true);
+  }
+
+  /// One-time migration to fix album titles that were enriched from RSS feeds
+  /// with "Artist - Album" format. Extracts just the album name portion.
+  Future<void> _ensureAlbumTitlesFixed() async {
+    final prefs = await SharedPreferences.getInstance();
+    final migrated = prefs.getBool(_titleFixMigrationKey) ?? false;
+    if (migrated) return;
+
+    final m = await _loadMap();
+    var changed = false;
+    for (final feedId in m.keys) {
+      final list = m[feedId] ?? [];
+      for (var i = 0; i < list.length; i++) {
+        final album = list[i];
+        final title = album.title.trim();
+        
+        // Check if title is in "Artist - Album" format
+        final dashIdx = title.indexOf(' - ');
+        if (dashIdx > 0) {
+          final leftPart = title.substring(0, dashIdx).trim();
+          final rightPart = title.substring(dashIdx + 3).trim();
+          
+          // If left part matches the artist, extract just the album (right part)
+          if (leftPart.toLowerCase() == album.artist.toLowerCase() && rightPart.isNotEmpty) {
+            list[i] = Album(
+              id: album.id,
+              title: rightPart,
+              artist: album.artist,
+              coverUrl: album.coverUrl,
+              tracks: album.tracks,
+              description: album.description,
+              published: album.published,
+            );
+            changed = true;
+          }
+        }
+      }
+      if (changed) {
+        m[feedId] = list;
+      }
+    }
+
+    if (changed) {
+      await _saveMap(m);
+    }
+    await prefs.setBool(_titleFixMigrationKey, true);
   }
 
   /// Remove existing duplicate albums across feeds based on canonical identity
