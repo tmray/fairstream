@@ -68,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
             NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
             NavigationDestination(icon: Icon(Icons.library_music), label: 'Library'),
             NavigationDestination(icon: Icon(Icons.group), label: 'Artists'),
-            NavigationDestination(icon: Icon(Icons.rss_feed), label: 'Feeds'),
+            NavigationDestination(icon: Icon(Icons.playlist_add), label: 'Import'),
           ],
         ),
       ),

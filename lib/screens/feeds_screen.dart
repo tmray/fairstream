@@ -54,10 +54,10 @@ class _FeedsScreenState extends State<FeedsScreen> {
     final ok = await showDialog<bool>(
       context: context, 
       builder: (c) => AlertDialog(
-        title: const Text('Add Feed URL'),
+        title: const Text('Add M3U Playlist URL'),
         content: TextField(
           controller: ctrl, 
-          decoration: const InputDecoration(hintText: 'https://...')
+          decoration: const InputDecoration(hintText: 'https://...playlist.m3u')
         ),
         actions: [
           TextButton(
@@ -124,7 +124,7 @@ class _FeedsScreenState extends State<FeedsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Feeds'),
+        title: const Text('Import'),
         actions: [
           Row(children: [
             const Text('Dev proxy'),
