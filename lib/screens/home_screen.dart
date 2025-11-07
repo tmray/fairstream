@@ -61,6 +61,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
               }
             } else {
+              // Special rule: when selecting the Search tab, always return to its root
+              if (index == 0) {
+                final searchNav = _navigatorKeys[0].currentState;
+                if (searchNav != null) {
+                  while (searchNav.canPop()) {
+                    searchNav.pop();
+                  }
+                }
+              }
               setState(() => _selectedIndex = index);
             }
           },
