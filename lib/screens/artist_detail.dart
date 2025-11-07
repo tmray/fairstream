@@ -118,63 +118,84 @@ class _ArtistDetailState extends State<ArtistDetail> {
                     SliverToBoxAdapter(
                       child: (_artistDescription == null && _artistImageUrl == null)
                           ? const SizedBox.shrink()
-                          : Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                if (_artistImageUrl != null && _artistImageUrl!.isNotEmpty)
-                                  AspectRatio(
-                                    aspectRatio: 16 / 9,
-                                    child: Image.network(
-                                      _artistImageUrl!,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stack) => Container(
+                          : LayoutBuilder(
+                              builder: (context, constraints) {
+                                final isDesktop = constraints.maxWidth > 600;
+                                final maxHeight = isDesktop ? 400.0 : constraints.maxWidth * (9 / 16);
+                                
+                                // Try to get higher res image for desktop
+                                String? imageUrl = _artistImageUrl;
+                                if (isDesktop && imageUrl != null && imageUrl.isNotEmpty) {
+                                  // Try to upgrade to higher resolution if using Faircamp format
+                                  if (imageUrl.contains('image_fixed_')) {
+                                    imageUrl = imageUrl.replaceFirst(RegExp(r'image_fixed_\d+'), 'image_fixed_1200');
+                                  }
+                                }
+                                
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    if (imageUrl != null && imageUrl.isNotEmpty)
+                                      ConstrainedBox(
+                                        constraints: BoxConstraints(
+                                          maxHeight: maxHeight,
+                                        ),
+                                        child: AspectRatio(
+                                          aspectRatio: 16 / 9,
+                                          child: Image.network(
+                                            imageUrl,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stack) => Container(
+                                              color: theme.colorScheme.surfaceContainerHighest,
+                                              child: Icon(
+                                                Icons.person,
+                                                size: 64,
+                                                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    else
+                                      Container(
+                                        height: 160,
                                         color: theme.colorScheme.surfaceContainerHighest,
+                                        alignment: Alignment.center,
                                         child: Icon(
                                           Icons.person,
                                           size: 64,
                                           color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                                         ),
                                       ),
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          if ((_artistDescription ?? '').isNotEmpty)
+                                            Text(
+                                              _artistDescription!,
+                                              style: theme.textTheme.bodyMedium?.copyWith(
+                                                color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                                              ),
+                                            ),
+                                          if (_artistLink != null && _artistLink!.isNotEmpty) ...[
+                                            const SizedBox(height: 8),
+                                            Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: TextButton.icon(
+                                                onPressed: _openArtistLink,
+                                                icon: const Icon(Icons.open_in_new),
+                                                label: const Text('View on web'),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
                                     ),
-                                  )
-                                else
-                                  Container(
-                                    height: 160,
-                                    color: theme.colorScheme.surfaceContainerHighest,
-                                    alignment: Alignment.center,
-                                    child: Icon(
-                                      Icons.person,
-                                      size: 64,
-                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                                    ),
-                                  ),
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      if ((_artistDescription ?? '').isNotEmpty)
-                                        Text(
-                                          _artistDescription!,
-                                          style: theme.textTheme.bodyMedium?.copyWith(
-                                            color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
-                                          ),
-                                        ),
-                                      if (_artistLink != null && _artistLink!.isNotEmpty) ...[
-                                        const SizedBox(height: 8),
-                                        Align(
-                                          alignment: Alignment.centerLeft,
-                                          child: TextButton.icon(
-                                            onPressed: _openArtistLink,
-                                            icon: const Icon(Icons.open_in_new),
-                                            label: const Text('View on web'),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ],
+                                  ],
+                                );
+                              },
                             ),
                     ),
                     SliverPadding(
