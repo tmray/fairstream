@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter_html/flutter_html.dart';
 import '../models/album.dart';
 import '../services/playback_manager.dart';
@@ -19,6 +20,7 @@ class AlbumDetail extends StatefulWidget {
 class _AlbumDetailState extends State<AlbumDetail> {
   Album? _hydratedAlbum;
   // bool _loading = false;
+  final ScrollController _moreByController = ScrollController();
 
   @override
   void initState() {
@@ -265,6 +267,110 @@ class _AlbumDetailState extends State<AlbumDetail> {
                   },
                 );
               },
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        // More by this artist
+        FutureBuilder<List<Album>>(
+          future: AlbumStore().getAllAlbums(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) return const SizedBox.shrink();
+            final all = snapshot.data!;
+            final artistKey = album.artist.trim().toLowerCase();
+            final others = all
+                .where((a) => a.id != album.id && a.artist.trim().toLowerCase() == artistKey)
+                .toList();
+            if (others.isEmpty) return const SizedBox.shrink();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  child: Text(
+                    'More by ${album.artist}',
+                    style: theme.textTheme.titleLarge,
+                  ),
+                ),
+                SizedBox(
+                  height: 170,
+                  child: ScrollConfiguration(
+                    behavior: ScrollConfiguration.of(context).copyWith(
+                      dragDevices: const {
+                        PointerDeviceKind.touch,
+                        PointerDeviceKind.mouse,
+                        PointerDeviceKind.trackpad,
+                      },
+                      scrollbars: true,
+                    ),
+                    child: Scrollbar(
+                      controller: _moreByController,
+                      thumbVisibility: true,
+                      child: ListView.separated(
+                        controller: _moreByController,
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        scrollDirection: Axis.horizontal,
+                        itemCount: others.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 12),
+                        itemBuilder: (context, index) {
+                          final a = others[index];
+                          return InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AlbumDetail(album: a, playback: widget.playback),
+                                ),
+                              );
+                            },
+                            child: SizedBox(
+                              width: 120,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  AspectRatio(
+                                    aspectRatio: 1,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: (a.coverUrl != null && a.coverUrl!.isNotEmpty)
+                                          ? Image.network(
+                                              a.coverUrl!,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stack) => Container(
+                                                color: theme.colorScheme.surfaceContainerHighest,
+                                                child: Icon(
+                                                  Icons.album,
+                                                  color: theme.colorScheme.onSurface,
+                                                ),
+                                              ),
+                                            )
+                                          : Container(
+                                              color: theme.colorScheme.surfaceContainerHighest,
+                                              child: Icon(
+                                                Icons.album,
+                                                color: theme.colorScheme.onSurface,
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    a.title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: kToolbarHeight),
+              ],
             );
           },
         ),
