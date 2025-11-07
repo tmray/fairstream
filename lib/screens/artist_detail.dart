@@ -114,74 +114,67 @@ class _ArtistDetailState extends State<ArtistDetail> {
               ? const Center(child: Text('No albums for this artist'))
               : CustomScrollView(
                   slivers: [
-                    // Header with artist image and description (if available)
+                    // Header with large artist image at the top and description/link below
                     SliverToBoxAdapter(
                       child: (_artistDescription == null && _artistImageUrl == null)
                           ? const SizedBox.shrink()
-                          : Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (_artistImageUrl != null)
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Image.network(
-                                        _artistImageUrl!,
-                                        width: 64,
-                                        height: 64,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stack) => Container(
-                                          width: 64,
-                                          height: 64,
-                                          color: theme.colorScheme.surfaceContainerHighest,
-                                          child: Icon(
-                                            Icons.person,
-                                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                                          ),
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (_artistImageUrl != null && _artistImageUrl!.isNotEmpty)
+                                  AspectRatio(
+                                    aspectRatio: 16 / 9,
+                                    child: Image.network(
+                                      _artistImageUrl!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stack) => Container(
+                                        color: theme.colorScheme.surfaceContainerHighest,
+                                        child: Icon(
+                                          Icons.person,
+                                          size: 64,
+                                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                                         ),
                                       ),
-                                    )
-                                  else
-                                    Container(
-                                      width: 64,
-                                      height: 64,
-                                      decoration: BoxDecoration(
-                                        color: theme.colorScheme.surfaceContainerHighest,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Icon(
-                                        Icons.person,
-                                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                                      ),
                                     ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
+                                  )
+                                else
+                                  Container(
+                                    height: 160,
+                                    color: theme.colorScheme.surfaceContainerHighest,
+                                    alignment: Alignment.center,
+                                    child: Icon(
+                                      Icons.person,
+                                      size: 64,
+                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                    ),
+                                  ),
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      if ((_artistDescription ?? '').isNotEmpty)
                                         Text(
-                                          _artistDescription ?? '',
+                                          _artistDescription!,
                                           style: theme.textTheme.bodyMedium?.copyWith(
                                             color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
                                           ),
                                         ),
-                                        if (_artistLink != null && _artistLink!.isNotEmpty) ...[
-                                          const SizedBox(height: 8),
-                                          Align(
-                                            alignment: Alignment.centerLeft,
-                                            child: TextButton.icon(
-                                              onPressed: _openArtistLink,
-                                              icon: const Icon(Icons.open_in_new),
-                                              label: const Text('View on web'),
-                                            ),
+                                      if (_artistLink != null && _artistLink!.isNotEmpty) ...[
+                                        const SizedBox(height: 8),
+                                        Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: TextButton.icon(
+                                            onPressed: _openArtistLink,
+                                            icon: const Icon(Icons.open_in_new),
+                                            label: const Text('View on web'),
                                           ),
-                                        ],
+                                        ),
                                       ],
-                                    ),
+                                    ],
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                     ),
                     SliverPadding(
