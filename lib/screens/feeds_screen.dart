@@ -5,6 +5,7 @@ import '../utils/dev_config.dart';
 import '../services/subscription_manager.dart';
 import '../models/feed_source.dart';
 import '../services/album_store.dart';
+import 'test_listening_time.dart';
 
 class FeedsScreen extends StatefulWidget {
   const FeedsScreen({super.key});
@@ -126,6 +127,16 @@ class _FeedsScreenState extends State<FeedsScreen> {
       appBar: AppBar(
         title: const Text('Import'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.science),
+            tooltip: 'Test Listening Time',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const TestListeningTime()),
+              );
+            },
+          ),
           Row(children: [
             const Text('Dev proxy'),
             Switch(

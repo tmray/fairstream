@@ -3,6 +3,7 @@ import 'library_screen.dart';
 import 'feeds_screen.dart';
 import 'artists_screen.dart';
 import 'search_screen.dart';
+import 'support_artists.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,6 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
     GlobalKey<NavigatorState>(), // Search
     GlobalKey<NavigatorState>(), // Library
     GlobalKey<NavigatorState>(), // Artists
+    GlobalKey<NavigatorState>(), // Support
     GlobalKey<NavigatorState>(), // Feeds
   ];
 
@@ -45,7 +47,8 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildNavigator(0, const SearchScreen()),
               _buildNavigator(1, const LibraryScreen()),
               _buildNavigator(2, const ArtistsScreen()),
-              _buildNavigator(3, const FeedsScreen()),
+              _buildNavigator(3, const SupportArtists()),
+              _buildNavigator(4, const FeedsScreen()),
             ],
           ),
         ),
@@ -77,6 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
             NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
             NavigationDestination(icon: Icon(Icons.library_music), label: 'Library'),
             NavigationDestination(icon: Icon(Icons.group), label: 'Artists'),
+            NavigationDestination(icon: Icon(Icons.favorite), label: 'Support'),
             NavigationDestination(icon: Icon(Icons.playlist_add), label: 'Import'),
           ],
         ),

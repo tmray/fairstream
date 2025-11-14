@@ -5,6 +5,7 @@ import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'listening_tracker.dart';
 
 class PlaybackManager {
   PlaybackManager._internal() {
@@ -52,6 +53,12 @@ class PlaybackManager {
   StreamSubscription<Duration?>? _durSub;
   Timer? _posTimer; // Linux fallback approximate timer
   StreamSubscription<ProcessingState>? _procSub;
+
+  // Listening time tracking
+  final _listeningTracker = ListeningTracker();
+  Timer? _trackingTimer;
+  DateTime? _trackingStartTime;
+  String? _trackingArtist;
 
   // Simple in-memory queue of tracks for album playback
   List<Track> _queue = <Track>[];
@@ -222,6 +229,9 @@ class PlaybackManager {
         _lastUrl = url;
         _lastDurationSeconds = durationSeconds;
         
+        // Start tracking listening time for this artist
+        _startListeningTracking(artist);
+        
         // Now that new track is started, allow completion handling for this track
         _isHandlingCompletion = false;
         debugPrint('New track started - re-enabling completion handler');
@@ -331,6 +341,10 @@ class PlaybackManager {
   currentArtwork.value = _currentAlbumArtwork;
   _lastUrl = url;
   _lastDurationSeconds = durationSeconds;
+  
+  // Start tracking listening time for this artist
+  _startListeningTracking(artist);
+  
   // Stop any current just_audio playback explicitly before starting
   try { await _player!.stop(); } catch (_) {}
   await _player!.play();
@@ -351,6 +365,8 @@ class PlaybackManager {
 
   Future<void> stop() async {
     _userInitiatedStop = true;
+    _stopListeningTracking(); // Record final listening segment
+    
     if (Platform.isLinux) {
       try {
         // Try direct Process.kill first
@@ -473,8 +489,49 @@ class PlaybackManager {
     return playUrl(_lastUrl!);
   }
 
+  /// Start tracking listening time for the current artist
+  void _startListeningTracking(String? artist) {
+    if (artist == null || artist.trim().isEmpty) return;
+    
+    _stopListeningTracking(); // Stop any previous tracking
+    
+    _trackingArtist = artist;
+    _trackingStartTime = DateTime.now();
+    
+    // Record listening time every 30 seconds
+    _trackingTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      _recordListeningSegment();
+    });
+  }
+
+  /// Stop tracking and record final segment
+  void _stopListeningTracking() {
+    _trackingTimer?.cancel();
+    _trackingTimer = null;
+    
+    // Record any remaining time
+    _recordListeningSegment();
+    
+    _trackingArtist = null;
+    _trackingStartTime = null;
+  }
+
+  /// Record the accumulated listening time since last checkpoint
+  void _recordListeningSegment() {
+    if (_trackingArtist == null || _trackingStartTime == null) return;
+    
+    final now = DateTime.now();
+    final elapsed = now.difference(_trackingStartTime!).inSeconds;
+    
+    if (elapsed > 0) {
+      _listeningTracker.recordListeningTime(_trackingArtist!, elapsed);
+      _trackingStartTime = now; // Reset checkpoint
+    }
+  }
+
   /// Dispose any subscriptions/notifiers if needed by callers.
   void dispose() {
+    _stopListeningTracking();
     _playingSub?.cancel();
     _procSub?.cancel();
     _posSub?.cancel();
