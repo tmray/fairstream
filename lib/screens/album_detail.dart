@@ -21,6 +21,7 @@ class _AlbumDetailState extends State<AlbumDetail> {
   Album? _hydratedAlbum;
   // bool _loading = false;
   final ScrollController _moreByController = ScrollController();
+  bool _descriptionExpanded = false;
 
   @override
   void initState() {
@@ -76,6 +77,11 @@ class _AlbumDetailState extends State<AlbumDetail> {
 
   FeedMetadataService _getMetadataService() {
     return FeedMetadataService();
+  }
+
+  String _stripHtmlTags(String html) {
+    // Simple HTML tag stripper for text measurement
+    return html.replaceAll(RegExp(r'<[^>]*>'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   @override
@@ -193,20 +199,68 @@ class _AlbumDetailState extends State<AlbumDetail> {
               ),
               if (album.description != null) ...[
                 const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: Html(
-                    data: album.description!,
-                    style: {
-                      "body": Style(
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Create a TextPainter to measure the text height
+                    final textSpan = TextSpan(
+                      text: _stripHtmlTags(album.description!),
+                      style: TextStyle(
                         color: theme.colorScheme.onSurface,
-                        fontSize: FontSize(theme.textTheme.bodyMedium?.fontSize ?? 16),
+                        fontSize: theme.textTheme.bodyMedium?.fontSize ?? 16,
                         fontFamily: theme.textTheme.bodyMedium?.fontFamily,
-                        margin: Margins.zero,
-                        padding: HtmlPaddings.zero,
                       ),
-                    },
-                  ),
+                    );
+                    final textPainter = TextPainter(
+                      text: textSpan,
+                      maxLines: 3,
+                      textDirection: TextDirection.ltr,
+                    );
+                    textPainter.layout(maxWidth: constraints.maxWidth);
+                    final isLongText = textPainter.didExceedMaxLines;
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: double.infinity,
+                          child: Html(
+                            data: album.description!,
+                            style: {
+                              "body": Style(
+                                color: theme.colorScheme.onSurface,
+                                fontSize: FontSize(theme.textTheme.bodyMedium?.fontSize ?? 16),
+                                fontFamily: theme.textTheme.bodyMedium?.fontFamily,
+                                margin: Margins.zero,
+                                padding: HtmlPaddings.zero,
+                                maxLines: _descriptionExpanded ? null : 3,
+                                textOverflow: _descriptionExpanded ? null : TextOverflow.ellipsis,
+                              ),
+                            },
+                          ),
+                        ),
+                        if (isLongText)
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _descriptionExpanded = !_descriptionExpanded;
+                              });
+                            },
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: Text(
+                              _descriptionExpanded ? 'Show less' : 'Show more',
+                              style: TextStyle(
+                                color: theme.colorScheme.primary,
+                                fontSize: theme.textTheme.bodySmall?.fontSize,
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
               ],
               if (album.published != null) ...[
