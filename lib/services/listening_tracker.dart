@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Used to identify artists worth supporting based on listening habits.
 class ListeningTracker {
   static const _key = 'listening_time_v1';
+  static const _lastViewedKey = 'support_tab_last_viewed_v1';
   static const _supportThresholdSeconds = 1800; // 30 minutes
 
   /// Get the current period key (e.g., "2025-11" for November 2025)
@@ -129,6 +130,37 @@ class ListeningTracker {
     if (keysToRemove.isNotEmpty) {
       await _save(data);
     }
+  }
+
+  /// Mark the Support tab as viewed (clears the notification badge)
+  Future<void> markSupportTabViewed() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_lastViewedKey, DateTime.now().millisecondsSinceEpoch);
+  }
+
+  /// Get the count of new artists to support since last viewing the tab
+  Future<int> getUnviewedSupportCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastViewedMs = prefs.getInt(_lastViewedKey);
+    
+    // If never viewed, show count
+    if (lastViewedMs == null) {
+      final above = await getArtistsAboveThreshold();
+      return above.length;
+    }
+    
+    // Check if any artists crossed the threshold after last view
+    // For simplicity, we'll just show count if there are any artists above threshold
+    // and it's been more than an hour since last view (to avoid badge spam)
+    final lastViewed = DateTime.fromMillisecondsSinceEpoch(lastViewedMs);
+    final hoursSinceView = DateTime.now().difference(lastViewed).inHours;
+    
+    if (hoursSinceView < 1) {
+      return 0; // Recently viewed, don't show badge
+    }
+    
+    final above = await getArtistsAboveThreshold();
+    return above.length;
   }
 
   /// Format seconds into a human-readable duration string

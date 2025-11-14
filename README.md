@@ -140,9 +140,9 @@ lib/
 
 FairStream is designed as a **client-only application** with no backend server. Each user imports and manages their own library locally. This approach:
 
-- ✅ Respects user privacy (no centralized tracking)
-- ✅ Puts users in control of their library
-- ✅ Reduces infrastructure costs and complexity
+- Respects user privacy (no centralized tracking)
+- Puts users in control of their library
+- Reduces infrastructure costs and complexity
 
 ## Contributing
 

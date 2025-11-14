@@ -40,9 +40,10 @@ class _TestListeningTimeState extends State<TestListeningTime> {
     await _tracker.recordListeningTime(artist, seconds);
     
     final current = await _tracker.getListeningTime(artist);
+    final badgeCount = await _tracker.getUnviewedSupportCount();
     
     setState(() {
-      _status = 'Added $minutes min to "$artist"\nTotal this month: ${ListeningTracker.formatDuration(current)}';
+      _status = 'Added $minutes min to "$artist"\nTotal this month: ${ListeningTracker.formatDuration(current)}\n\nBadge count: $badgeCount (check Support tab!)';
     });
   }
 

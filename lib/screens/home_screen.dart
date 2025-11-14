@@ -4,6 +4,8 @@ import 'feeds_screen.dart';
 import 'artists_screen.dart';
 import 'search_screen.dart';
 import 'support_artists.dart';
+import '../services/listening_tracker.dart';
+import 'dart:async';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,6 +16,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
+  int _supportBadgeCount = 0;
+  Timer? _badgeUpdateTimer;
+  final _tracker = ListeningTracker();
   
   // Navigation keys for each tab - allows each tab to maintain its own navigation stack
   final List<GlobalKey<NavigatorState>> _navigatorKeys = [
@@ -23,6 +28,29 @@ class _HomeScreenState extends State<HomeScreen> {
     GlobalKey<NavigatorState>(), // Support
     GlobalKey<NavigatorState>(), // Feeds
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _updateBadgeCount();
+    // Check for badge updates every minute
+    _badgeUpdateTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      _updateBadgeCount();
+    });
+  }
+
+  @override
+  void dispose() {
+    _badgeUpdateTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _updateBadgeCount() async {
+    final count = await _tracker.getUnviewedSupportCount();
+    if (mounted) {
+      setState(() => _supportBadgeCount = count);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -73,15 +101,31 @@ class _HomeScreenState extends State<HomeScreen> {
                   }
                 }
               }
+              
+              // When selecting Support tab, mark as viewed and clear badge
+              if (index == 3) {
+                _tracker.markSupportTabViewed().then((_) {
+                  _updateBadgeCount();
+                });
+              }
+              
               setState(() => _selectedIndex = index);
             }
           },
-          destinations: const [
-            NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
-            NavigationDestination(icon: Icon(Icons.library_music), label: 'Library'),
-            NavigationDestination(icon: Icon(Icons.group), label: 'Artists'),
-            NavigationDestination(icon: Icon(Icons.favorite), label: 'Support'),
-            NavigationDestination(icon: Icon(Icons.playlist_add), label: 'Import'),
+          destinations: [
+            const NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
+            const NavigationDestination(icon: Icon(Icons.library_music), label: 'Library'),
+            const NavigationDestination(icon: Icon(Icons.group), label: 'Artists'),
+            NavigationDestination(
+              icon: _supportBadgeCount > 0
+                  ? Badge(
+                      label: Text('$_supportBadgeCount'),
+                      child: const Icon(Icons.favorite),
+                    )
+                  : const Icon(Icons.favorite),
+              label: 'Support',
+            ),
+            const NavigationDestination(icon: Icon(Icons.playlist_add), label: 'Import'),
           ],
         ),
       ),
