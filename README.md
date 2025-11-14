@@ -54,8 +54,19 @@ Just like podcast apps coexist (Apple Podcasts, Spotify, Pocket Casts, etc.) whi
 - **Media Controls**: System-level play/pause controls
 - **Persistent Now Playing Bar**: Always accessible at the bottom of the screen
 
+### Artist Support & Listening Time Tracking
+- **Automatic Listening Time Tracking**: Records how long you listen to each artist per month
+- **Support Tab with Smart Notifications**: 
+  - When you've listened to an artist for 30+ minutes in a month, they appear in the Support tab
+  - A badge notification appears on the Support tab to alert you about artists worth supporting
+  - Badge clears when you view the tab (with a 1-hour cooldown to avoid spam)
+- **Direct Support Links**: One-tap access to each artist's Faircamp site to donate or subscribe
+- **Artist Discovery**: Shows listening stats (e.g., "1 hr 23 min this month") to help you identify artists you're enjoying most
+
+This creates a natural connection between your listening habits and supporting independent artists—the more you enjoy their music, the more you're encouraged to contribute directly to them, without any platform taking a cut.
+
 ### Navigation
-- **Tab-Based Interface**: Four main tabs (Search, Library, Artists, Import)
+- **Tab-Based Interface**: Five main tabs (Search, Library, Artists, Support, Import)
 - **Per-Tab Navigation Stacks**: Deep linking within each tab with back button support
 
 ## Technical Architecture
@@ -75,6 +86,7 @@ Just like podcast apps coexist (Apple Podcasts, Spotify, Pocket Casts, etc.) whi
 - Albums stored in a feed-keyed map structure
 - Artist index cached with version-based invalidation
 - Search history kept locally
+- Listening time tracked per artist with monthly periods
 - Migration system ensures data integrity across app updates
 
 ### Parsing & Metadata
@@ -125,13 +137,14 @@ Any Faircamp-hosted site with:
 ```
 lib/
 ├── models/           # Data models (Album, Track)
-├── screens/          # UI screens (Home, AlbumDetail, ArtistDetail, etc.)
+├── screens/          # UI screens (Home, AlbumDetail, ArtistDetail, SupportArtists, etc.)
 ├── services/         # Business logic
 │   ├── album_store.dart       # Persistent storage & migrations
 │   ├── m3u_parser.dart        # M3U playlist parsing
 │   ├── feed_parser.dart       # RSS/Atom feed parsing
 │   ├── feed_metadata.dart     # Metadata enrichment
-│   ├── playback_manager.dart  # Audio playback control
+│   ├── playback_manager.dart  # Audio playback control & listening time tracking
+│   ├── listening_tracker.dart # Artist listening time tracking & support notifications
 │   └── text_normalizer.dart   # String cleaning utilities
 └── widgets/          # Reusable UI components
 ```
