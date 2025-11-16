@@ -2,7 +2,7 @@
 
 Version: 1.0  
 Date: September 28, 2025  
-Product Manager: Gemini Assistant  
+
 Target Platform: Mobile (iOS, Android) via Flutter
 
 ## **1\. Vision and Goals**
