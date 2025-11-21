@@ -5,7 +5,9 @@ import '../utils/dev_config.dart';
 import '../services/subscription_manager.dart';
 import '../models/feed_source.dart';
 import '../services/album_store.dart';
+import '../services/backup_service.dart';
 import 'test_listening_time.dart';
+import 'package:file_picker/file_picker.dart';
 
 class FeedsScreen extends StatefulWidget {
   const FeedsScreen({super.key});
@@ -17,6 +19,7 @@ class FeedsScreen extends StatefulWidget {
 class _FeedsScreenState extends State<FeedsScreen> {
   final _parser = FeedParser();
   final _subs = SubscriptionManager();
+  final _backupService = BackupService();
   List<FeedSource> _feeds = [];
   bool _useDevProxy = false;
 
@@ -121,6 +124,81 @@ class _FeedsScreenState extends State<FeedsScreen> {
     }
   }
 
+  Future<void> _exportBackup() async {
+    try {
+      final result = await _backupService.exportToFile();
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.success ? result.message : 'Export failed: ${result.message}'),
+          duration: const Duration(seconds: 5),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Export error: $e'),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+        ),
+      );
+    }
+  }
+
+  Future<void> _importBackup() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (result == null || result.files.single.path == null) {
+        return; // User canceled
+      }
+
+      final filePath = result.files.single.path!;
+      final importResult = await _backupService.importFromFile(filePath);
+
+      if (!mounted) return;
+
+      if (importResult.success) {
+        // Reload the feeds list after import
+        await _load();
+        if (!mounted) return;
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${importResult.message}\nPlease restart the app to see all changes.'),
+            duration: const Duration(seconds: 5),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Import failed: ${importResult.message}'),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Import error: $e'),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -146,24 +224,74 @@ class _FeedsScreenState extends State<FeedsScreen> {
           ])
         ],
       ),
-      body: ListView.builder(
-        itemCount: _feeds.length, 
-        itemBuilder: (context, index) {
-          final feed = _feeds[index];
-          return ListTile(
-            leading: feed.imageUrl != null 
-              ? Image.network(
-                  feed.imageUrl!,
-                  width: 50,
-                  height: 50,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.music_note),
-                )
-              : const Icon(Icons.music_note),
-            title: Text(feed.name),
-            subtitle: Text(feed.url),
-          );
-        }
+      body: Column(
+        children: [
+          // Backup/Restore section
+          Card(
+            margin: const EdgeInsets.all(16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Library Backup',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Export your library to backup file or import from a previous backup.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _exportBackup,
+                          icon: const Icon(Icons.file_upload),
+                          label: const Text('Export'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: _importBackup,
+                          icon: const Icon(Icons.file_download),
+                          label: const Text('Import'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Feeds list
+          Expanded(
+            child: ListView.builder(
+              itemCount: _feeds.length,
+              itemBuilder: (context, index) {
+                final feed = _feeds[index];
+                return ListTile(
+                  leading: feed.imageUrl != null
+                      ? Image.network(
+                          feed.imageUrl!,
+                          width: 50,
+                          height: 50,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.music_note),
+                        )
+                      : const Icon(Icons.music_note),
+                  title: Text(feed.name),
+                  subtitle: Text(feed.url),
+                );
+              },
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(onPressed: _add, child: const Icon(Icons.add)),
     );
