@@ -89,6 +89,47 @@ This creates a natural connection between your listening habits and supporting i
 - Listening time tracked per artist with monthly periods
 - Migration system ensures data integrity across app updates
 
+### Backup & Restore
+FairStream supports manual export and import of all locally stored data (albums, artist index, listening time, search history, migration flags) via a JSON backup file.
+
+**How to Create a Backup**
+1. Open the Import tab.
+2. Tap the Export button in the Library Backup section.
+3. A JSON file named `fairstream_backup_YYYY-MM-DDTHH-MM-SS.json` is written to your Downloads directory.
+
+**Default Backup Locations**
+- Linux/macOS/Windows: `~/Downloads/`
+- Android: `/storage/emulated/0/Download/` (or external storage fallback)
+- iOS: App Documents directory (accessible via Files app if enabled)
+
+**Restore From Backup**
+1. Open the Import tab.
+2. Tap Import and select a previously exported backup file.
+3. Restart the app to ensure all restored data (albums, support stats, etc.) is reloaded into memory.
+
+**Backup File Format**
+```json
+{
+  "version": 1,
+  "timestamp": "2025-11-21T14:30:45",
+  "data": {
+    "albums_all": {"<feedId>": [/* album objects */]},
+    "artists_index_v1": {/* artist grouping data */},
+    "listening_time_v1": {"2025-11": {"artistKey": 1835}},
+    "search_history_v1": ["lorenzo", "live"],
+    "support_tab_last_viewed_v1": 1732200000,
+    "albums_normalized_v2": true
+  }
+}
+```
+Only known keys are exported; unknown or future keys are ignored safely on import. The `version` field allows forward compatibility—newer backups won't import into older app versions.
+
+**Current Limitations / Roadmap**
+- Manual process (no automatic scheduled backups yet)
+- No encryption (consider storing sensitive notes externally if needed)
+- Cloud sync foundation exists (see `cloud_sync_service.dart`) but OAuth + remote storage integration is not yet implemented
+- Future enhancements: selective restore, periodic auto-backups, optional encryption, Google Drive integration
+
 ### Parsing & Metadata
 - **M3U Parser**: Handles Faircamp playlist format (`#EXTM3U`, `#PLAYLIST`, `#EXTALB`, `#EXTINF`, `#EXTIMG`)
 - **RSS/Atom Parser**: Enriches albums with descriptions, cover art, and publication dates
@@ -145,6 +186,8 @@ lib/
 │   ├── feed_metadata.dart     # Metadata enrichment
 │   ├── playback_manager.dart  # Audio playback control & listening time tracking
 │   ├── listening_tracker.dart # Artist listening time tracking & support notifications
+│   ├── backup_service.dart    # Export/import JSON backup functionality
+│   ├── cloud_sync_service.dart# Foundation for future cloud sync (manual hooks)
 │   └── text_normalizer.dart   # String cleaning utilities
 └── widgets/          # Reusable UI components
 ```
