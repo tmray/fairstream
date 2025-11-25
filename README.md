@@ -130,6 +130,39 @@ Only known keys are exported; unknown or future keys are ignored safely on impor
 - Cloud sync foundation exists (see `cloud_sync_service.dart`) but OAuth + remote storage integration is not yet implemented
 - Future enhancements: selective restore, periodic auto-backups, optional encryption, Google Drive integration
 
+### Catalog Export (Shareable)
+For sharing your library publicly (e.g., on a static site), FairStream can export a lightweight catalog JSON containing only your feed links and display info—no personal listening history or app settings.
+
+**How to Export a Catalog**
+- Open the Import tab → tap `Export Catalog`.
+- A JSON file named `fairstream_catalog_YYYY-MM-DDTHH-MM-SS.json` is written to your Downloads directory.
+
+**Catalog JSON Format**
+```json
+{
+  "catalogVersion": 1,
+  "generatedAt": "2025-11-25T14:30:45",
+  "feeds": [
+    {
+      "url": "https://artist.example/playlist.m3u",
+      "name": "Artist Name or Album Title",
+      "imageUrl": "https://artist.example/cover.jpg",
+      "addedAt": "2025-10-05T12:01:00"
+    }
+  ]
+}
+```
+
+**How Import Works with Catalogs**
+- Use the regular `Import` button and select a catalog JSON.
+- The app auto-detects the format and re-parses each `url` to populate albums.
+- Duplicate albums are skipped automatically.
+
+**Use on a Static Site**
+- Host the catalog JSON file on your personal site to showcase your library.
+- Visitors can download the JSON and import it into FairStream to follow the same feeds.
+- Since it contains only feed links, it is safe to share and does not include private app data.
+
 ### Parsing & Metadata
 - **M3U Parser**: Handles Faircamp playlist format (`#EXTM3U`, `#PLAYLIST`, `#EXTALB`, `#EXTINF`, `#EXTIMG`)
 - **RSS/Atom Parser**: Enriches albums with descriptions, cover art, and publication dates

@@ -149,6 +149,31 @@ class _FeedsScreenState extends State<FeedsScreen> {
     }
   }
 
+  Future<void> _exportCatalog() async {
+    try {
+      final result = await _backupService.exportCatalogToFile();
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.success ? result.message : 'Catalog export failed: ${result.message}'),
+          duration: const Duration(seconds: 5),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Catalog export error: $e'),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+        ),
+      );
+    }
+  }
+
   Future<void> _importBackup() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -161,7 +186,7 @@ class _FeedsScreenState extends State<FeedsScreen> {
       }
 
       final filePath = result.files.single.path!;
-      final importResult = await _backupService.importFromFile(filePath);
+      final importResult = await _backupService.importAutoFromFile(filePath);
 
       if (!mounted) return;
 
@@ -235,33 +260,53 @@ class _FeedsScreenState extends State<FeedsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Library Backup',
+                    'Share or Backup Library',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Export your library to backup file or import from a previous backup.',
+                    'Export a lightweight catalog (shareable feed links) or import a catalog/full backup file to populate your library.',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: _exportCatalog,
+                    icon: const Icon(Icons.link),
+                    label: const Text('Export Catalog (Shareable)'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _importBackup,
+                    icon: const Icon(Icons.file_download),
+                    label: const Text('Import Catalog or Backup'),
+                  ),
                   const SizedBox(height: 12),
-                  Row(
+                  ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    childrenPadding: EdgeInsets.zero,
+                    title: Text(
+                      'Advanced: Full Data Backup',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Text(
+                      'Includes albums, listening time, search history, migrations. Larger file; mainly for full device restore.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                     children: [
-                      Expanded(
+                      Align(
+                        alignment: Alignment.centerLeft,
                         child: OutlinedButton.icon(
                           onPressed: _exportBackup,
-                          icon: const Icon(Icons.file_upload),
-                          label: const Text('Export'),
+                          icon: const Icon(Icons.save_alt),
+                          label: const Text('Export Full Backup'),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: _importBackup,
-                          icon: const Icon(Icons.file_download),
-                          label: const Text('Import'),
-                        ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Tip: Use the catalog export for public sharing; use full backup for personal archival.',
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
                   ),
