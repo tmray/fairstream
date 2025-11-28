@@ -212,6 +212,7 @@ class BackupService {
       int addedAlbums = 0;
       int skippedAlbums = 0;
       int processedFeeds = 0;
+      final failedFeeds = <Map<String, dynamic>>[];
 
       for (final f in feeds) {
         final m = Map<String, dynamic>.from(f as Map);
@@ -220,7 +221,8 @@ class BackupService {
         if (url == null || url.isEmpty) continue;
 
         try {
-          final albums = await parser.parseFeed(url);
+          // Apply a network timeout so a down feed doesn't block the whole import
+          final albums = await parser.parseFeed(url).timeout(const Duration(seconds: 15));
           for (final album in albums) {
             final exists = await store.albumExistsCanonical(album);
             if (exists) {
@@ -244,14 +246,36 @@ class BackupService {
           processedFeeds++;
         } catch (e) {
           debugPrint('Error parsing feed $url: $e');
+          failedFeeds.add({
+            'url': url,
+            'error': e.toString(),
+            'timestamp': DateTime.now().toIso8601String(),
+          });
+          // Continue with next feed
         }
       }
 
       await subsMgr.save(existingSubs);
 
+      // Persist failed feeds for later retry
+      if (failedFeeds.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        final existing = prefs.getString('import_failures_v1');
+        List<dynamic> arr = [];
+        if (existing != null) {
+          try {
+            arr = List<dynamic>.from(jsonDecode(existing));
+          } catch (_) {}
+        }
+        arr.addAll(failedFeeds);
+        await prefs.setString('import_failures_v1', jsonEncode(arr));
+      }
+
       return BackupImportResult(
         success: true,
-        message: 'Imported $addedAlbums album(s), $skippedAlbums duplicate(s) from $processedFeeds feed(s)',
+        message: failedFeeds.isEmpty
+            ? 'Imported $addedAlbums album(s), $skippedAlbums duplicate(s) from $processedFeeds feed(s)'
+            : 'Imported $addedAlbums album(s), $skippedAlbums duplicate(s) from $processedFeeds feed(s). ${failedFeeds.length} feed(s) skipped and saved for retry.',
         itemsImported: addedAlbums,
       );
     } catch (e) {
