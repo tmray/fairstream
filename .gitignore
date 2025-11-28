@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local library data and exports (user-specific, not for version control)
+**/fairstream_backup_*.json
+**/fairstream_catalog_*.json
+**/shared_preferences.json
+.local/share/fairstream_app/
