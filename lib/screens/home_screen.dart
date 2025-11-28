@@ -20,6 +20,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _badgeUpdateTimer;
   final _tracker = ListeningTracker();
   
+  // GlobalKeys to access screen states for manual reload
+  final _libraryKey = GlobalKey<LibraryScreenState>();
+  final _artistsKey = GlobalKey<ArtistsScreenState>();
+  
   // Navigation keys for each tab - allows each tab to maintain its own navigation stack
   final List<GlobalKey<NavigatorState>> _navigatorKeys = [
     GlobalKey<NavigatorState>(), // Search
@@ -52,6 +56,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _reloadLibraryAndArtists() {
+    _libraryKey.currentState?.reload();
+    _artistsKey.currentState?.reload();
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -73,10 +82,10 @@ class _HomeScreenState extends State<HomeScreen> {
             index: _selectedIndex,
             children: [
               _buildNavigator(0, const SearchScreen()),
-              _buildNavigator(1, const LibraryScreen()),
-              _buildNavigator(2, const ArtistsScreen()),
+              _buildNavigator(1, LibraryScreen(key: _libraryKey)),
+              _buildNavigator(2, ArtistsScreen(key: _artistsKey)),
               _buildNavigator(3, const SupportArtists()),
-              _buildNavigator(4, const FeedsScreen()),
+              _buildNavigator(4, FeedsScreen(onLibraryChanged: _reloadLibraryAndArtists)),
             ],
           ),
         ),

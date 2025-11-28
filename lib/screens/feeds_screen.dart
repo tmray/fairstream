@@ -10,7 +10,9 @@ import 'test_listening_time.dart';
 import 'package:file_picker/file_picker.dart';
 
 class FeedsScreen extends StatefulWidget {
-  const FeedsScreen({super.key});
+  final VoidCallback? onLibraryChanged;
+  
+  const FeedsScreen({super.key, this.onLibraryChanged});
 
   @override
   State<FeedsScreen> createState() => _FeedsScreenState();
@@ -186,14 +188,54 @@ class _FeedsScreenState extends State<FeedsScreen> {
       }
 
       final filePath = result.files.single.path!;
-      final importResult = await _backupService.importAutoFromFile(filePath);
+
+      // Progress tracking
+      final progressNotifier = ValueNotifier<String>('Importing…');
+
+      // Show progress indicator while importing
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (c) => AlertDialog(
+            content: Row(
+              children: [
+                const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 3)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: progressNotifier,
+                    builder: (context, text, _) => Text(text),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      final importResult = await _backupService.importAutoFromFile(
+        filePath,
+        onProgress: (current, total) {
+          final percent = ((current / total) * 100).toInt();
+          progressNotifier.value = 'Importing feed $current of $total ($percent%)';
+        },
+      );
+
+      progressNotifier.dispose();
 
       if (!mounted) return;
+
+      // Dismiss progress dialog
+      Navigator.of(context, rootNavigator: true).pop();
 
       if (importResult.success) {
         // Reload the feeds list after import
         await _load();
         if (!mounted) return;
+        
+        // Notify parent to reload library/artists
+        widget.onLibraryChanged?.call();
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -214,9 +256,83 @@ class _FeedsScreenState extends State<FeedsScreen> {
       }
     } catch (e) {
       if (!mounted) return;
+      // Ensure any dialog is closed on error
+      Navigator.of(context, rootNavigator: true).maybePop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Import error: $e'),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+        ),
+      );
+    }
+  }
+
+  Future<void> _retryFailedImports() async {
+    try {
+      // Progress tracking
+      final progressNotifier = ValueNotifier<String>('Retrying failed imports…');
+
+      // Show progress indicator while retrying
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (c) => AlertDialog(
+            content: Row(
+              children: [
+                const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 3)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: progressNotifier,
+                    builder: (context, text, _) => Text(text),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      final result = await _backupService.retryFailedImports(
+        onProgress: (current, total) {
+          final percent = ((current / total) * 100).toInt();
+          progressNotifier.value = 'Retrying feed $current of $total ($percent%)';
+        },
+      );
+
+      progressNotifier.dispose();
+
+      if (!mounted) return;
+
+      // Dismiss progress dialog
+      Navigator.of(context, rootNavigator: true).pop();
+
+      // Reload the feeds list after retry
+      await _load();
+      if (!mounted) return;
+
+      // Notify parent to reload library/artists
+      widget.onLibraryChanged?.call();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.message),
+          duration: const Duration(seconds: 5),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+        ),
+      );
+
+      // Refresh to update button visibility
+      setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).maybePop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Retry error: $e'),
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
         ),
@@ -281,6 +397,22 @@ class _FeedsScreenState extends State<FeedsScreen> {
                     onPressed: _importBackup,
                     icon: const Icon(Icons.file_download),
                     label: const Text('Import Catalog or Backup'),
+                  ),
+                  const SizedBox(height: 8),
+                  FutureBuilder<int>(
+                    future: _backupService.getFailedImportCount(),
+                    builder: (context, snapshot) {
+                      final count = snapshot.data ?? 0;
+                      if (count == 0) return const SizedBox.shrink();
+                      return OutlinedButton.icon(
+                        onPressed: _retryFailedImports,
+                        icon: const Icon(Icons.refresh),
+                        label: Text('Retry $count Failed Import${count > 1 ? 's' : ''}'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Theme.of(context).colorScheme.error,
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
                   ExpansionTile(

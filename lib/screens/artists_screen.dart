@@ -8,10 +8,10 @@ class ArtistsScreen extends StatefulWidget {
   const ArtistsScreen({super.key});
 
   @override
-  State<ArtistsScreen> createState() => _ArtistsScreenState();
+  State<ArtistsScreen> createState() => ArtistsScreenState();
 }
 
-class _ArtistsScreenState extends State<ArtistsScreen> {
+class ArtistsScreenState extends State<ArtistsScreen> with WidgetsBindingObserver {
   final _store = AlbumStore();
   final Map<String, _ArtistGroup> _groups = {};
   bool _loading = true;
@@ -23,17 +23,34 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    WidgetsBinding.instance.addObserver(this);
+    reload();
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
     _searchController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  Future<void> _load() async {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      reload();
+    }
+  }
+
+  /// Called when this widget is reactivated (e.g., when navigating back to this tab)
+  @override
+  void activate() {
+    super.activate();
+    reload();
+  }
+
+  /// Public method to reload artists data
+  Future<void> reload() async {
     // Use cached artist index for quick grouping
   final index = await _store.getArtistIndexCached();
     // Load all albums once to hydrate album objects for counts/covers
@@ -91,7 +108,7 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
               final messenger = ScaffoldMessenger.of(context);
               messenger.showSnackBar(const SnackBar(content: Text('Repairing artist metadata...')));
               final updated = await _store.repairArtistMetadata();
-              await _load();
+              await reload();
               messenger.hideCurrentSnackBar();
               messenger.showSnackBar(SnackBar(content: Text(updated > 0 ? 'Fixed $updated album${updated == 1 ? '' : 's'}' : 'No fixes needed')));
             },

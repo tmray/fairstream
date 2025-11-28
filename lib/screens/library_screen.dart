@@ -8,22 +8,46 @@ class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
 
   @override
-  State<LibraryScreen> createState() => _LibraryScreenState();
+  State<LibraryScreen> createState() => LibraryScreenState();
 }
 
-class _LibraryScreenState extends State<LibraryScreen> {
+class LibraryScreenState extends State<LibraryScreen> with WidgetsBindingObserver {
   final _store = AlbumStore();
   List<Album> _albums = [];
 
   @override
   void initState() { 
-    super.initState(); 
-    _load(); 
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    reload(); 
   }
 
-  Future<void> _load() async { 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      reload();
+    }
+  }
+
+  /// Called when this widget is reactivated (e.g., when navigating back to this tab)
+  @override
+  void activate() {
+    super.activate();
+    reload();
+  }
+
+  /// Public method to reload library data
+  Future<void> reload() async { 
     _albums = await _store.getAllAlbums();
-    setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _refreshMetadata() async {
@@ -81,7 +105,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 const SnackBar(content: Text('Repairing artist metadata...')),
               );
               final updated = await _store.repairArtistMetadata();
-              await _load();
+              await reload();
               messenger.hideCurrentSnackBar();
               messenger.showSnackBar(
                 SnackBar(content: Text(updated > 0 ? 'Fixed $updated album${updated == 1 ? '' : 's'}' : 'No fixes needed')),

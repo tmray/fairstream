@@ -197,7 +197,10 @@ class BackupService {
   }
 
   /// Import catalog data: re-parse each feed URL and populate albums
-  Future<BackupImportResult> importCatalogData(Map<String, dynamic> catalog) async {
+  Future<BackupImportResult> importCatalogData(
+    Map<String, dynamic> catalog, {
+    void Function(int current, int total)? onProgress,
+  }) async {
     try {
       final feeds = catalog['feeds'] as List<dynamic>?;
       if (feeds == null) {
@@ -213,8 +216,11 @@ class BackupService {
       int skippedAlbums = 0;
       int processedFeeds = 0;
       final failedFeeds = <Map<String, dynamic>>[];
+      final totalFeeds = feeds.length;
 
-      for (final f in feeds) {
+      for (int i = 0; i < feeds.length; i++) {
+        final f = feeds[i];
+        onProgress?.call(i + 1, totalFeeds);
         final m = Map<String, dynamic>.from(f as Map);
         final url = m['url'] as String?;
         final imageUrl = m['imageUrl'] as String?;
@@ -283,8 +289,118 @@ class BackupService {
     }
   }
 
+  /// Get count of failed imports waiting for retry
+  Future<int> getFailedImportCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getString('import_failures_v1');
+    if (existing == null) return 0;
+    try {
+      final arr = List<dynamic>.from(jsonDecode(existing));
+      return arr.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Retry all failed imports
+  Future<BackupImportResult> retryFailedImports({
+    void Function(int current, int total)? onProgress,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final existing = prefs.getString('import_failures_v1');
+      if (existing == null) {
+        return BackupImportResult(success: true, message: 'No failed imports to retry');
+      }
+
+      List<dynamic> failures;
+      try {
+        failures = List<dynamic>.from(jsonDecode(existing));
+      } catch (_) {
+        return BackupImportResult(success: false, message: 'Invalid failure data');
+      }
+
+      if (failures.isEmpty) {
+        return BackupImportResult(success: true, message: 'No failed imports to retry');
+      }
+
+      final parser = FeedParser();
+      final store = AlbumStore();
+      final subsMgr = SubscriptionManager();
+      final existingSubs = await subsMgr.load();
+
+      int addedAlbums = 0;
+      int skippedAlbums = 0;
+      int successfulRetries = 0;
+      final stillFailedFeeds = <Map<String, dynamic>>[];
+      final totalFailures = failures.length;
+
+      for (int i = 0; i < failures.length; i++) {
+        final f = failures[i];
+        onProgress?.call(i + 1, totalFailures);
+        final m = Map<String, dynamic>.from(f as Map);
+        final url = m['url'] as String?;
+        if (url == null || url.isEmpty) continue;
+
+        try {
+          final albums = await parser.parseFeed(url).timeout(const Duration(seconds: 15));
+          for (final album in albums) {
+            final exists = await store.albumExistsCanonical(album);
+            if (exists) {
+              skippedAlbums++;
+              continue;
+            }
+
+            final feedId = '${DateTime.now().millisecondsSinceEpoch}_${album.title}';
+            final feed = FeedSource(
+              id: feedId,
+              url: url,
+              name: album.title,
+              imageUrl: album.coverUrl,
+              addedAt: DateTime.now(),
+            );
+
+            existingSubs.add(feed);
+            await store.saveAlbum(feedId, album);
+            addedAlbums++;
+          }
+          successfulRetries++;
+        } catch (e) {
+          debugPrint('Retry failed for $url: $e');
+          stillFailedFeeds.add({
+            'url': url,
+            'error': e.toString(),
+            'timestamp': DateTime.now().toIso8601String(),
+          });
+        }
+      }
+
+      await subsMgr.save(existingSubs);
+
+      // Update failures list (keep only those that still failed)
+      if (stillFailedFeeds.isEmpty) {
+        await prefs.remove('import_failures_v1');
+      } else {
+        await prefs.setString('import_failures_v1', jsonEncode(stillFailedFeeds));
+      }
+
+      return BackupImportResult(
+        success: true,
+        message: stillFailedFeeds.isEmpty
+            ? 'Retry successful: $addedAlbums album(s) imported, $skippedAlbums duplicate(s)'
+            : 'Retry complete: $successfulRetries succeeded, ${stillFailedFeeds.length} still failing. $addedAlbums album(s) imported.',
+        itemsImported: addedAlbums,
+      );
+    } catch (e) {
+      return BackupImportResult(success: false, message: 'Retry failed: $e');
+    }
+  }
+
   /// Import from file, auto-detect backup vs catalog format
-  Future<BackupImportResult> importAutoFromFile(String filePath) async {
+  Future<BackupImportResult> importAutoFromFile(
+    String filePath, {
+    void Function(int current, int total)? onProgress,
+  }) async {
     try {
       final file = File(filePath);
       if (!await file.exists()) {
@@ -297,11 +413,11 @@ class BackupService {
         return await importData(data);
       }
       if (data.containsKey('catalogVersion') && data.containsKey('feeds')) {
-        return await importCatalogData(data);
+        return await importCatalogData(data, onProgress: onProgress);
       }
       // Heuristic: if it has 'feeds' only, treat as catalog
       if (data.containsKey('feeds')) {
-        return await importCatalogData(data);
+        return await importCatalogData(data, onProgress: onProgress);
       }
       return BackupImportResult(success: false, message: 'Unrecognized file format');
     } catch (e) {
